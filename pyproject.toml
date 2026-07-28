@@ -42,7 +42,7 @@ detectors = [
     "requests>=2,<3",
     "torch==2.0.1",
     "torchvision==0.15.2",
-    "tqdm==4.66.5",
+    "tqdm==4.70.0",
 ]
 knowledge-earthengine = [
     "earthengine-api>=1,<2",
