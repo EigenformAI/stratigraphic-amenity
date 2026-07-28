@@ -51,7 +51,7 @@ knowledge-local = [
     "shapely>=2,<3",
 ]
 knowledge-network = [
-    "httpx>=0.27,<1",
+    "httpx>=0.28.1,<1",
 ]
 knowledge-semantic = [
     "sentence-transformers>=3,<6",
