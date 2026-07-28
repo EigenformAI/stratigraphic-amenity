@@ -1,6 +1,7 @@
 from stratigraphic_amenity.knowledge import KnowledgeConfig
 from stratigraphic_amenity.map_processing import MapProcessingConfig
 from stratigraphic_amenity.mcp.resources import ResourceRegistry
+from stratigraphic_amenity.paths import configured_data_root
 
 
 def test_installed_defaults_use_xdg_roots_not_process_cwd(tmp_path, monkeypatch):
@@ -61,3 +62,12 @@ def test_explicit_relative_roots_resolve_from_launch_directory(tmp_path, monkeyp
     assert knowledge_config.data_root == expected_data
     assert knowledge_config.knowledge_root == expected_data / "assets" / "knowledge"
     assert knowledge_config.knowledge_sources_root == expected_data / "knowledge" / "sources"
+
+
+def test_installer_data_root_prefers_explicit_then_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("GEOMAP_DATA_ROOT", "environment-data")
+
+    assert configured_data_root(base_dir=tmp_path) == (tmp_path / "environment-data").resolve()
+    assert configured_data_root("explicit-data", base_dir=tmp_path) == (
+        tmp_path / "explicit-data"
+    ).resolve()

@@ -98,6 +98,15 @@ def map_processing_result_to_mcp(
             converted_detections.append(data)
         regions[label] = converted_detections
 
+    legend = [_legend_entry_to_mcp(entry) for entry in result.legend]
+    warnings: list[str] = []
+    if any(entry["label_extraction"] == "not_available" for entry in legend):
+        warnings.append(
+            "Legend labels were not extracted; this build ships no OCR. Entries with "
+            "label_extraction 'not_available' have no transcribed text. Do not infer them "
+            "from an image; ask the user or a separate OCR/VLM system."
+        )
+
     payload = {
         "schema_version": MAP_PROCESSING_SCHEMA_VERSION,
         "date": result.created_date,
@@ -107,14 +116,33 @@ def map_processing_result_to_mcp(
         "source_uri": map_info["source_uri"],
         "map_uri": map_info["map_uri"],
         "size": result.size.to_dict(),
+        # Every box below is in the full-resolution source frame. Inline previews are
+        # downsampled and carry coordinate_frame 'preview'; the two must not be mixed.
+        "coordinate_frame": "source",
         "regions": regions,
-        "legend": [entry.to_dict() for entry in result.legend],
+        "legend": legend,
         "artifacts": artifacts,
         "information": redact_paths(result.information),
         "faults": redact_paths(result.faults),
         "source_path_redacted": True,
+        "warnings": warnings,
     }
     return redact_paths(payload)
+
+
+def _legend_entry_to_mcp(entry: Any) -> dict[str, Any]:
+    """Distinguish "no label was extracted" from "the label is an empty string".
+
+    An empty string reads to a model as a blank to fill in; both round-2 MCP agents
+    filled it in with invented lithology names.
+    """
+
+    data = entry.to_dict()
+    label = data.get("label")
+    extracted = bool(label) and str(label).strip() != ""
+    data["label"] = label if extracted else None
+    data["label_extraction"] = "extracted" if extracted else "not_available"
+    return data
 
 
 def knowledge_bundle_to_mcp(bundle: Any) -> dict[str, Any]:
@@ -208,7 +236,7 @@ def tool_definitions() -> list[dict[str, Any]]:
         ),
         _tool(
             "geomap_prepare_detectors",
-            "Download and install only the manifest-approved PEACE runtime and detector weights into the server data root. Disabled unless explicitly enabled by the operator.",
+            "Download and install only the manifest-approved PEACE runtime and detector weights into the server data root. Performs network access and writes to disk; confirm with the user before calling. Exposed by default; an operator may disable it.",
             {},
             read_only=False,
             idempotent=True,

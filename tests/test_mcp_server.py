@@ -7,6 +7,7 @@ from stratigraphic_amenity.mcp.adapter import GeomapMcpAdapter
 from stratigraphic_amenity.mcp.errors import McpToolError
 from stratigraphic_amenity.mcp.resources import ResourceRegistry
 from stratigraphic_amenity.mcp.server import create_server
+from stratigraphic_amenity.map_processing.errors import DetectorLoadError
 
 
 PNG_1X1 = base64.b64decode(
@@ -23,6 +24,7 @@ class FailingAdapter:
             trace_id="trace-fixture",
             details={"path_label": "outside-root"},
             recovery_hints=["Choose a path under GEOMAP_MCP_ALLOWED_ROOTS."],
+            cause={"type": "missing_python_module", "module": "cpuinfo"},
         )
 
 
@@ -71,6 +73,10 @@ def test_call_tool_preserves_typed_errors_over_server_handler():
     assert result["structuredContent"]["error"]["recovery_hints"] == [
         "Choose a path under GEOMAP_MCP_ALLOWED_ROOTS."
     ]
+    assert result["structuredContent"]["error"]["cause"] == {
+        "type": "missing_python_module",
+        "module": "cpuinfo",
+    }
     assert result["structuredContent"]["code"] == "disallowed_path"
 
 
@@ -146,3 +152,67 @@ def test_tool_diagnostics_are_redacted_and_written_to_stderr(monkeypatch, capsys
     assert "outcome=disallowed_path" in captured.err
     assert "trace_id=trace-fixture" in captured.err
     assert "Path is outside" not in captured.err
+
+
+def test_prepare_detectors_tool_is_exposed_by_default(monkeypatch):
+    pytest.importorskip("mcp.types")
+
+    monkeypatch.delenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", raising=False)
+    enabled = create_server(adapter=FailingAdapter())
+    result = _dispatch(enabled, "geomap_prepare_detectors", {})
+    assert result["structuredContent"]["code"] != "unknown_tool"
+
+    monkeypatch.setenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", "false")
+    disabled = create_server(adapter=FailingAdapter())
+    assert _dispatch(disabled, "geomap_prepare_detectors", {})["structuredContent"]["code"] == "unknown_tool"
+
+
+def test_process_image_preserves_missing_module_cause():
+    class Registry:
+        def map_public(self, map_id):
+            return {"map_id": map_id}
+
+        def source_path(self, _map_id):
+            return "/redacted/map.png"
+
+    class MapService:
+        def process_image(self, _path):
+            cause = ModuleNotFoundError("No module named 'cpuinfo'", name="cpuinfo")
+            raise DetectorLoadError("Unable to import the managed runtime.") from cause
+
+    adapter = GeomapMcpAdapter(registry=Registry(), map_service_factory=MapService)
+
+    with pytest.raises(McpToolError) as exc_info:
+        adapter.process_image(map_id="map")
+
+    assert exc_info.value.code == "missing_extra"
+    assert exc_info.value.cause == {
+        "type": "missing_python_module",
+        "module": "cpuinfo",
+    }
+    assert "/redacted" not in str(exc_info.value.to_dict())
+
+
+def test_process_image_preserves_shared_library_cause_over_server(tmp_path, monkeypatch):
+    pytest.importorskip("mcp.types")
+    registry, data_root, _ = _registry(tmp_path, monkeypatch)
+    image = data_root / "map.png"
+    image.write_bytes(PNG_1X1)
+    map_id = registry.register_map(image)["map_id"]
+
+    class MapService:
+        def process_image(self, _path):
+            cause = ImportError("libGL.so.1: cannot open shared object file at /private/runtime")
+            raise DetectorLoadError("Unable to import the managed runtime.") from cause
+
+    server = create_server(
+        adapter=GeomapMcpAdapter(registry=registry, map_service_factory=MapService)
+    )
+
+    result = _dispatch(server, "geomap_process_image", {"map_id": map_id})
+
+    assert result["structuredContent"]["error"]["cause"] == {
+        "type": "missing_shared_library",
+        "library": "libGL.so.1",
+    }
+    assert "/private/runtime" not in str(result)

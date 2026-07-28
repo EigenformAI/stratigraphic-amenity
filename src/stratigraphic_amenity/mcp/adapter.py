@@ -87,31 +87,6 @@ class GeomapMcpAdapter:
         trace_id = _active_trace_id()
         service = self._knowledge()
         config = self._map_config()
-        component_model = config.resolved_component_model_path.exists()
-        legend_model = config.resolved_legend_model_path.exists()
-        detector_runtime = _managed_runtime_present(config.resolved_ultralytics_root)
-        detector_failures = detector_preflight(config.resolved_ultralytics_root)
-        detector_dependencies = not detector_failures
-        map_processing_missing = []
-        if not detector_runtime:
-            map_processing_missing.append(
-                "managed PEACE YOLOv10 runtime; run "
-                "`stratigraphic-amenity-assets peace-yolov10-runtime "
-                '--root "$GEOMAP_DATA_ROOT"` in the server environment'
-            )
-        map_processing_missing.extend(detector_failures)
-        if not component_model:
-            map_processing_missing.append(
-                "component detector weights; run "
-                "`stratigraphic-amenity-assets peace-layout-detectors "
-                '--root "$GEOMAP_DATA_ROOT"` in the server environment'
-            )
-        if not legend_model:
-            map_processing_missing.append(
-                "legend detector weights; run "
-                "`stratigraphic-amenity-assets peace-layout-detectors "
-                '--root "$GEOMAP_DATA_ROOT"` in the server environment'
-            )
         providers = [
             _provider_capability(registration, getattr(service, "config", None))
             for registration in getattr(service, "_registrations", [])
@@ -123,11 +98,7 @@ class GeomapMcpAdapter:
                 configured=bool(self.registry.allowed_roots),
                 missing=[] if self.registry.allowed_roots else ["at least one allowed filesystem root"],
             ),
-            "map_processing": _capability(
-                installed=detector_runtime and detector_dependencies,
-                configured=component_model and legend_model,
-                missing=map_processing_missing,
-            ),
+            "map_processing": _map_processing_capability(config),
             "detector_preparation": _detector_preparation_capability(config),
             "georeferencing": _capability(
                 installed=geo_installed,
@@ -164,9 +135,9 @@ class GeomapMcpAdapter:
                 "torch": _module_available("torch"),
             },
             "detectors": {
-                "component_model_present": component_model,
-                "legend_model_present": legend_model,
-                "runtime_available": detector_runtime and detector_dependencies,
+                "component_model_present": config.resolved_component_model_path.exists(),
+                "legend_model_present": config.resolved_legend_model_path.exists(),
+                "runtime_available": capabilities["map_processing"]["installed"],
             },
             "capabilities": capabilities,
             "providers": providers,
@@ -175,7 +146,7 @@ class GeomapMcpAdapter:
         }
         return success_result(
             structured=structured,
-            text_summary=f"geomap MCP exposes {len(providers)} knowledge providers.",
+            text_summary=_capabilities_summary(capabilities, provider_count=len(providers)),
             trace_id=trace_id,
         )
 
@@ -210,9 +181,7 @@ class GeomapMcpAdapter:
         except Exception as exc:  # noqa: BLE001 - optional detector failures need typed MCP errors.
             cause = _detector_cause(exc)
             if exc.__class__.__name__ in {"OptionalDependencyError", "DetectorLoadError"} or cause:
-                raise McpToolError(
-                    "missing_extra", str(exc), trace_id=trace_id, cause=cause
-                ) from exc
+                raise self._detector_not_ready(exc, cause=cause, trace_id=trace_id) from exc
             raise
         # One map carries many artifacts; coalesce their registrations into a
         # single locked merge-write instead of one per artifact.
@@ -234,14 +203,77 @@ class GeomapMcpAdapter:
         ]
         return success_result(
             structured=structured,
-            text_summary=(
-                f"Processed map {resolved_map_id}: "
-                f"{sum(len(items) for items in structured['regions'].values())} regions, "
-                f"{len(structured['legend'])} legend entries."
+            text_summary=_processing_summary(
+                structured, map_id=resolved_map_id, has_preview=bool(content)
             ),
             trace_id=trace_id,
             content=content,
             resource_links=resource_links,
+        )
+
+    def _detector_not_ready(
+        self, exc: BaseException, *, cause: dict[str, Any], trace_id: str | None
+    ) -> McpToolError:
+        """Build the one error an MCP client can actually act on.
+
+        Clients act on tool errors rather than on capability listings, and their shell is
+        not the server's environment, so a bare installer command sends them to the wrong
+        place. Carry the full requirement list and the remedy that works from here.
+        """
+
+        try:
+            missing = list(_map_processing_capability(self._map_config())["missing_requirements"])
+        except Exception:  # noqa: BLE001 - guidance must not depend on a second probe succeeding.
+            missing = []
+        if detector_preparation_enabled():
+            hints = [
+                "Call `geomap_prepare_detectors` to install the approved runtime and weights "
+                "into the server's data root. Confirm with the user first: it downloads about "
+                "200 MiB and writes to disk.",
+            ]
+        else:
+            hints = [
+                "Ask the server operator to run `stratigraphic-amenity-assets --all "
+                '--root "$GEOMAP_DATA_ROOT"` in the server environment, or to re-expose '
+                "`geomap_prepare_detectors`.",
+            ]
+        hints.append(
+            "Do not run installer commands in your own shell. It is a different environment "
+            "from the server, so its PATH may lack the command and anything it installs lands "
+            "in the wrong data root."
+        )
+        if any("missing" in item and "module" not in item for item in missing):
+            hints.append(
+                "Requirements that are Python packages cannot be installed by any tool here; "
+                "report those to the operator."
+            )
+        # Inline both the remedy and the list: a host may surface only `message`, in
+        # which case pointers to details.* and recovery_hints reach nobody.
+        if detector_preparation_enabled():
+            remedy = (
+                " Call `geomap_prepare_detectors` on this server, after confirming with the "
+                "user, to install the approved runtime and weights."
+            )
+        else:
+            remedy = (
+                " Report this to the server operator. Do not run the quoted commands in your "
+                "own shell; it is a different environment from the server."
+            )
+        outstanding = (
+            " Outstanding requirements: " + "; ".join(missing) + "."
+            if missing
+            else " The specific requirement could not be determined."
+        )
+        return McpToolError(
+            "missing_extra",
+            "The detector is not ready in the server environment." + remedy + outstanding,
+            trace_id=trace_id,
+            details={
+                "missing_requirements": missing,
+                "detector_error": _scrub_path_tokens(str(exc)),
+            },
+            recovery_hints=hints,
+            cause=cause,
         )
 
     @_traced
@@ -251,7 +283,11 @@ class GeomapMcpAdapter:
             raise McpToolError(
                 "preparation_disabled",
                 "Detector preparation is disabled by the server operator.",
-                recovery_hints=["Set GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=true and restart the server."],
+                recovery_hints=[
+                    "Ask the server operator to unset GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION, "
+                    "or set it to true, and restart the server. Do not install detector assets "
+                    "from the client's shell; it is a different environment.",
+                ],
             )
         try:
             result = prepare_detectors(self._map_config())
@@ -269,14 +305,29 @@ class GeomapMcpAdapter:
                 ],
             ) from exc
         map_status = self.list_capabilities()["structuredContent"]["capabilities"]["map_processing"]
+        # Assets are only one of the three requirements; claiming success while the
+        # Python dependencies are still absent is what sends clients hunting.
+        prepared = f"Prepared {len(result.assets)} approved detector assets."
+        warnings: list[str] = []
+        if map_status["ready"]:
+            summary = f"{prepared} Map processing is ready."
+        else:
+            summary = (
+                f"{prepared} Map processing is still not ready; this tool installs assets only "
+                "and cannot install Python packages. See map_processing.missing_requirements."
+            )
+            warnings.append(
+                "Detector assets were installed but map processing is not ready. The remaining "
+                "requirements must be resolved by the server operator."
+            )
         return success_result(
             structured={
                 "assets": list(result.assets),
                 "map_processing": map_status,
                 "performs_network_access": True,
-                "warnings": [],
+                "warnings": warnings,
             },
-            text_summary=f"Prepared {len(result.assets)} approved detector assets.",
+            text_summary=summary,
             trace_id=trace_id,
         )
 
@@ -671,13 +722,118 @@ def _capability(
 
 
 def detector_preparation_enabled() -> bool:
-    return os.getenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "y",
-        "on",
-    }
+    """Detector provisioning is exposed unless an operator explicitly opts out.
+
+    Blank or unset keeps the default. Any other value must be recognizably truthy,
+    so a typo in the locking direction fails closed rather than re-exposing the tool.
+    """
+
+    configured = os.getenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", "").strip().lower()
+    if not configured:
+        return True
+    return configured in {"1", "true", "yes", "y", "on"}
+
+
+def _capabilities_summary(capabilities: Mapping[str, Any], *, provider_count: int) -> str:
+    """State readiness in text.
+
+    Round-2 agents all called this tool first and then ignored it, because a host that
+    surfaces only text showed them a provider count and nothing about what was ready.
+    """
+
+    not_ready = [name for name, entry in capabilities.items() if not entry.get("ready")]
+    parts = [f"geomap MCP exposes {provider_count} knowledge providers."]
+    if not not_ready:
+        parts.append("All capabilities are ready.")
+        return " ".join(parts)
+    described = ", ".join(
+        f"{name} ({len(capabilities[name].get('missing_requirements', []))} outstanding)"
+        for name in sorted(not_ready)
+    )
+    parts.append(f"Not ready: {described}.")
+    processing = capabilities.get("map_processing", {})
+    if not processing.get("ready"):
+        remedy = (
+            " Call `geomap_prepare_detectors` first."
+            if capabilities.get("detector_preparation", {}).get("ready")
+            else " Ask the server operator to resolve them."
+        )
+        parts.append(
+            "Do not call `geomap_process_image` until map_processing is ready." + remedy
+        )
+    return " ".join(parts)
+
+
+def _processing_summary(structured: Mapping[str, Any], *, map_id: str, has_preview: bool) -> str:
+    """Summarize a processing result for hosts that surface only text.
+
+    A client may show the model this string and the attached preview image while never
+    surfacing structuredContent. The two things a model reliably gets wrong from a
+    picture alone -- inventing legend labels and measuring boxes on the preview -- are
+    therefore stated here rather than only in structured fields.
+    """
+
+    legend = list(structured.get("legend", []))
+    size = structured.get("size", {})
+    width, height = size.get("width"), size.get("height")
+    regions = sum(len(items) for items in structured.get("regions", {}).values())
+    parts = [
+        f"Processed map {map_id}: {regions} regions, {len(legend)} legend entries. "
+        f"All boxes are in the {width}x{height} source frame."
+    ]
+    unlabeled = [
+        entry for entry in legend if entry.get("label_extraction") != "extracted"
+    ]
+    if unlabeled:
+        parts.append(
+            f"{len(unlabeled)} of {len(legend)} legend entries have no extracted label because "
+            "this build has no OCR. Report those entries as unlabeled; do not infer lithology "
+            "names from the map image."
+        )
+    if has_preview:
+        parts.append(
+            "The attached preview image is downsampled and is a different coordinate frame; "
+            "do not measure coordinates on it."
+        )
+    return " ".join(parts)
+
+
+def _map_processing_capability(config: Any) -> dict[str, Any]:
+    """Detector readiness, shared by the capability listing and the failure envelope.
+
+    The error path must not depend on the rest of the capability aggregation, which
+    also probes knowledge providers and can fail for unrelated reasons.
+    """
+
+    component_model = config.resolved_component_model_path.exists()
+    legend_model = config.resolved_legend_model_path.exists()
+    detector_runtime = _managed_runtime_present(config.resolved_ultralytics_root)
+    detector_failures = detector_preflight(config.resolved_ultralytics_root)
+    missing: list[str] = []
+    if not detector_runtime:
+        missing.append(
+            "managed PEACE YOLOv10 runtime; run "
+            "`stratigraphic-amenity-assets peace-yolov10-runtime "
+            '--root "$GEOMAP_DATA_ROOT"` in the server environment'
+        )
+    missing.extend(detector_failures)
+    if not component_model:
+        missing.append(
+            "component detector weights; run "
+            "`stratigraphic-amenity-assets peace-layout-detectors "
+            '--root "$GEOMAP_DATA_ROOT"` in the server environment'
+        )
+    if not legend_model:
+        missing.append(
+            "legend detector weights; run "
+            "`stratigraphic-amenity-assets peace-layout-detectors "
+            '--root "$GEOMAP_DATA_ROOT"` in the server environment'
+        )
+    return _capability(
+        installed=detector_runtime and not detector_failures,
+        configured=component_model and legend_model,
+        missing=missing,
+    )
 
 
 def _detector_preparation_capability(config: Any) -> dict[str, Any]:
@@ -691,7 +847,10 @@ def _detector_preparation_capability(config: Any) -> dict[str, Any]:
     installed = _module_available("gdown")
     missing = []
     if not enabled:
-        missing.append("operator opt-in GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=true")
+        missing.append(
+            "detector preparation was disabled by the server operator; unset "
+            "GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION to restore the default"
+        )
     if not installed:
         missing.append("install the 'assets' extra in the server environment")
     if not configured:
@@ -702,6 +861,16 @@ def _detector_preparation_capability(config: Any) -> dict[str, Any]:
         configured=configured,
         missing=missing,
     )
+
+
+# Absolute path tokens embedded mid-sentence survive redact_paths, which only replaces
+# whole values. Anchor on a separator not preceded by ':', '/', or a word character so
+# that geomap:// URIs and relative words are left intact.
+_PATH_TOKEN = re.compile(r"(?<![:\w/\\])(?:[A-Za-z]:)?[/\\][^\s'\"`,;)]+")
+
+
+def _scrub_path_tokens(text: str) -> str:
+    return _PATH_TOKEN.sub("<redacted>", text)
 
 
 def _detector_cause(exc: BaseException) -> dict[str, Any]:

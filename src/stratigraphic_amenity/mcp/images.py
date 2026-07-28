@@ -99,6 +99,9 @@ def _preview_payload(
         "height": height,
         "downsampled": downsampled,
         "encoded_bytes": len(payload),
+        # Boxes read off this image are in its own frame, not the source frame the
+        # structured detections use. Naming the frame keeps the two from being mixed.
+        "coordinate_frame": "preview",
     }
     return {
         "content": {"type": "image", "data": data, "mimeType": mime_type},

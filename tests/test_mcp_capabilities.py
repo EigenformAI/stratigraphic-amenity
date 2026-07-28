@@ -110,7 +110,7 @@ def test_managed_runtime_and_weights_make_map_processing_ready(tmp_path, monkeyp
     monkeypatch.setenv("GEOMAP_MODEL_ROOT", str(model_root))
     monkeypatch.setenv("GEOMAP_ULTRALYTICS_ROOT", str(runtime_root))
     monkeypatch.setenv("GEOMAP_MCP_ALLOWED_ROOTS", f"{data_root}:{cache_root}")
-    monkeypatch.setattr(adapter_module, "_module_available", lambda _name: True)
+    monkeypatch.setattr(adapter_module, "detector_preflight", lambda _root: ())
     service = SimpleNamespace(_registrations=[])
     adapter = GeomapMcpAdapter(
         registry=ResourceRegistry.from_env(base_dir=tmp_path),
@@ -123,3 +123,62 @@ def test_managed_runtime_and_weights_make_map_processing_ready(tmp_path, monkeyp
     assert status["configured"] is True
     assert status["ready"] is True
     assert status["missing_requirements"] == []
+
+
+def test_capabilities_report_import_failure_and_root_aware_commands(tmp_path, monkeypatch):
+    from stratigraphic_amenity.mcp import adapter as adapter_module
+
+    data_root = tmp_path / "server-data"
+    cache_root = tmp_path / "cache"
+    data_root.mkdir()
+    cache_root.mkdir()
+    monkeypatch.setenv("GEOMAP_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("GEOMAP_CACHE_ROOT", str(cache_root))
+    monkeypatch.setenv("GEOMAP_MCP_ALLOWED_ROOTS", f"{data_root}:{cache_root}")
+    monkeypatch.setattr(
+        adapter_module,
+        "detector_preflight",
+        lambda _root: ("cv2 import failed: missing shared library libGL.so.1", "cpuinfo is missing"),
+    )
+    adapter = GeomapMcpAdapter(
+        registry=ResourceRegistry.from_env(base_dir=tmp_path),
+        knowledge_service_factory=lambda: SimpleNamespace(_registrations=[]),
+    )
+
+    result = adapter.list_capabilities()["structuredContent"]
+    status = result["capabilities"]["map_processing"]
+
+    assert status["ready"] is False
+    assert any("libGL.so.1" in item for item in status["missing_requirements"])
+    assert any("cpuinfo" in item for item in status["missing_requirements"])
+    assert any('--root "$GEOMAP_DATA_ROOT"' in item for item in status["missing_requirements"])
+    assert str(data_root) not in str(result)
+
+
+def test_detector_preparation_capability_is_registered_by_default(tmp_path, monkeypatch):
+    data_root = tmp_path / "data"
+    cache_root = tmp_path / "cache"
+    data_root.mkdir()
+    cache_root.mkdir()
+    monkeypatch.setenv("GEOMAP_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("GEOMAP_CACHE_ROOT", str(cache_root))
+    monkeypatch.setenv("GEOMAP_MCP_ALLOWED_ROOTS", f"{data_root}:{cache_root}")
+    monkeypatch.delenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", raising=False)
+    adapter = GeomapMcpAdapter(
+        registry=ResourceRegistry.from_env(base_dir=tmp_path),
+        knowledge_service_factory=lambda: SimpleNamespace(_registrations=[]),
+    )
+
+    enabled = adapter.list_capabilities()["structuredContent"]["capabilities"]
+    monkeypatch.setenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", "false")
+    disabled = adapter.list_capabilities()["structuredContent"]["capabilities"]
+
+    assert enabled["detector_preparation"]["registered"] is True
+    assert not any(
+        "opt-in" in item for item in enabled["detector_preparation"]["missing_requirements"]
+    )
+    assert disabled["detector_preparation"]["registered"] is False
+    assert any(
+        "GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION" in item
+        for item in disabled["detector_preparation"]["missing_requirements"]
+    )

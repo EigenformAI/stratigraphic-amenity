@@ -10,7 +10,7 @@ from zipfile import ZipFile, ZipInfo
 import pytest
 
 import stratigraphic_amenity.asset_installer as asset_installer
-from stratigraphic_amenity.asset_installer import AssetInstallError, install_asset
+from stratigraphic_amenity.asset_installer import AssetInstallError, install_asset, provision_assets
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -276,6 +276,30 @@ def test_gdown_failure_and_oversize_are_reported_as_asset_errors(tmp_path, monke
     monkeypatch.setitem(sys.modules, "gdown", SimpleNamespace(download=oversized_download))
     with pytest.raises(AssetInstallError, match="size limit"):
         install_asset(asset, root=tmp_path / "oversized")
+
+
+def test_provision_assets_validates_all_ids_before_download(tmp_path):
+    calls = []
+    manifest = {
+        "asset": [
+            {
+                "id": "known",
+                "redistribution": "download-only",
+                "destination": "assets/known",
+                "post_install": ["file"],
+            }
+        ]
+    }
+
+    with pytest.raises(AssetInstallError, match="Unknown asset ID"):
+        provision_assets(
+            ["known", "unknown"],
+            root=tmp_path,
+            manifest=manifest,
+            download_file=lambda *_args: calls.append(True),
+        )
+
+    assert calls == []
 
 
 def test_force_replacement_restores_previous_destination_on_failure(tmp_path, monkeypatch):

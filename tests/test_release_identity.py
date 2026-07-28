@@ -28,3 +28,12 @@ def test_runtime_version_matches_release_metadata():
 
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     assert __version__ == metadata["version"]
+
+
+def test_detector_extra_is_cpu_headless_complete():
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    detectors = metadata["optional-dependencies"]["detectors"]
+
+    assert "opencv-python-headless==4.10.0.84" in detectors
+    assert "py-cpuinfo==9.0.0" in detectors
+    assert "opencv-python==4.10.0.84" not in detectors

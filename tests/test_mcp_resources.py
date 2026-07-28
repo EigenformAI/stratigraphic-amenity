@@ -74,6 +74,20 @@ def test_registry_rejects_paths_outside_allowed_roots(tmp_path, monkeypatch):
         registry.register_map(outside)
 
     assert exc_info.value.code == "disallowed_path"
+    assert exc_info.value.details["basename"] == outside.name
+    assert exc_info.value.details["path_origin"] == "input_image"
+    assert str(outside.parent) not in str(exc_info.value.details)
+
+
+def test_registry_identifies_generated_artifact_root_failure(tmp_path, monkeypatch):
+    registry, _, _ = _registry(tmp_path, monkeypatch)
+    outside = tmp_path / "generated.png"
+    outside.write_bytes(PNG_1X1)
+
+    with pytest.raises(McpToolError) as exc_info:
+        registry.register_artifact(outside, role="component_crop", stage="hie")
+
+    assert exc_info.value.details["path_origin"] == "generated_artifact"
 
 
 def test_registry_rejects_symlink_escape(tmp_path, monkeypatch):

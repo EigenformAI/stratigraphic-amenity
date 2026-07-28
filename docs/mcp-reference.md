@@ -1,6 +1,7 @@
 # MCP Reference
 
-Stratigraphic Amenity 0.1.0 exposes eight tools and resource reads through the local stdio
+Stratigraphic Amenity 0.1.0 exposes eight tools by default, an optional ninth provisioning tool,
+and resource reads through the local stdio
 transport. The server name is `stratigraphic-amenity`; the executable is
 `stratigraphic-amenity-mcp`. It does not expose HTTP, prompts, `resources/list`, or resource
 templates.
@@ -36,7 +37,8 @@ Errors set MCP `isError: true` and return a project-defined structured envelope:
     "message": "Input validation error: ...",
     "trace_id": "<hex-id>",
     "details": {},
-    "recovery_hints": []
+    "recovery_hints": [],
+    "cause": {"type": "missing_python_module", "module": "cpuinfo"}
   },
   "code": "invalid_arguments",
   "message": "Input validation error: ...",
@@ -45,7 +47,9 @@ Errors set MCP `isError: true` and return a project-defined structured envelope:
 }
 ```
 
-`details` and `recovery_hints` are omitted when empty. These fields are a Stratigraphic Amenity
+`details`, `recovery_hints`, and `cause` are omitted when empty. Causes expose only allowlisted
+identifiers such as a missing Python module or shared-library basename, never arbitrary exception
+text. These fields are a Stratigraphic Amenity
 contract, not standard MCP error fields.
 
 ## Tools
@@ -64,6 +68,21 @@ active-fault provider readiness does not verify that a local mirror file exists.
 inspect warnings/provenance before making factual claims.
 
 Annotations: read-only, idempotent.
+
+### `geomap_prepare_detectors`
+
+Inputs: none. This tool is exposed by default and is the supported way to make the detector
+ready; an operator may withhold it with `GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=false`. It
+requires the `assets` extra in the server environment, and does not install Python packages, so
+the `detectors` extra must already be present for `map_processing` to become ready. It downloads
+and installs exactly `peace-yolov10-runtime` and `peace-layout-detectors` from `assets/manifest.toml`
+into the standard `GEOMAP_DATA_ROOT` destinations. Callers cannot supply URLs, asset IDs, roots,
+or a force flag. Custom model/runtime roots are rejected.
+
+Returns redacted per-asset status, `performs_network_access: true` (a side-effect declaration, not
+a connectivity probe), and a fresh `map_processing` readiness report. The operation can
+download about 200 MiB and use substantially more disk during extraction. It cannot install Python
+or system packages. Annotations: state-changing, non-destructive, idempotent.
 
 ### `geomap_register_map`
 
@@ -101,10 +120,26 @@ or
 Requires `capabilities.map_processing.ready`. It detects component regions and legend units,
 writes crops, corner crops, a detection overlay, and metadata, then persists redacted processing
 state and artifact URIs. Returns `map-processing/v1` fields including image size, regions,
-legend entries, artifacts, and optional preview.
+legend entries, artifacts, `warnings`, and optional preview.
 
-Readiness requires the `detectors` extra plus the managed `peace-yolov10-runtime` and
-`peace-layout-detectors` assets. Missing requirements include exact installer commands.
+Every box in `regions` and `legend` is in the full-resolution source frame, declared by the
+payload's `coordinate_frame: "source"`. An inlined preview is downsampled to fit the response
+budget and declares `coordinate_frame: "preview"` in its own metadata alongside `source_width`,
+`source_height`, `width`, and `height`. Never read coordinates off the preview image; the two
+frames differ, often by more than 1.5x.
+
+Legend `label` is `null` unless text was actually transcribed, and every entry carries
+`label_extraction`, either `"extracted"` or `"not_available"`. This build ships no OCR, so
+`not_available` is the normal case and a payload-level warning says so. Do not infer a label from
+the preview or the source image; obtain it from the user or a separate OCR/VLM system.
+
+Readiness requires successful subprocess imports of the `detectors` extra plus the managed
+`peace-yolov10-runtime` and `peace-layout-detectors` assets. When the detector is not ready the
+error envelope carries the complete outstanding list in `details.missing_requirements`, the
+underlying detector message in `details.detector_error`, and `recovery_hints` naming the remedy
+that works from an MCP client: `geomap_prepare_detectors` when it is exposed, otherwise
+escalation to the operator. Manual commands use `--root "$GEOMAP_DATA_ROOT"` and must run in the
+server environment; absolute server paths remain redacted.
 
 Annotations: state-changing, non-idempotent because processing rewrites cached map state.
 

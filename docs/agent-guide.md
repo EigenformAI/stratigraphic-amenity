@@ -10,16 +10,23 @@ evidence; it does not read text, decide which evidence is true, or produce the f
    still lack a usable local mirror or source coverage.
 3. Register only an existing user-supplied image that is visible to the local server and inside
    an allowed root.
-4. Call `geomap_process_image` only when `map_processing.ready` is true. If false and
-   `geomap_prepare_detectors` is exposed, request user confirmation before its network/disk side
-   effects and call it once. Otherwise report the requirements to the operator or continue with a
-   georeference/knowledge-only flow; do not assume the MCP client's shell is the server shell.
-5. Obtain CRS text, labels, and GCPs from the user or a separate OCR/VLM system.
-6. Prefer at least three non-collinear GCPs; inspect affine residual in map CRS units.
-7. Treat `warnings`, `record_count`, `truncated`, and each item's `provenance` as evidence.
-8. An empty result with a warning is not evidence of geological absence.
-9. Read only resource URIs relevant to the question. Do not ask for or expose local paths.
-10. Construct the final response in the client; there is no OCR, VLM, or PEQA tool.
+4. Call `geomap_process_image` only when `map_processing.ready` is true. If false, the normal
+   remedy is `geomap_prepare_detectors`: request user confirmation for its network/disk side
+   effects, then call it once. If it is absent, or if the remaining requirements are Python
+   packages it cannot install, report them to the operator or continue with a
+   georeference/knowledge-only flow. Never install detector assets from your own shell: it is a
+   different environment from the server's, and doing so writes to the wrong root.
+5. Obtain CRS text, labels, and GCPs from the user or a separate OCR/VLM system. A legend entry
+   with `label_extraction: "not_available"` has no transcribed text; report it as unlabeled.
+   Never read a label off the map image and present it as a tool result.
+6. Report coordinates only from the structured payload, which is `coordinate_frame: "source"`.
+   Inlined previews are downsampled and carry `coordinate_frame: "preview"`; boxes measured on
+   one frame are wrong in the other.
+7. Prefer at least three non-collinear GCPs; inspect affine residual in map CRS units.
+8. Treat `warnings`, `record_count`, `truncated`, and each item's `provenance` as evidence.
+9. An empty result with a warning is not evidence of geological absence.
+10. Read only resource URIs relevant to the question. Do not ask for or expose local paths.
+11. Construct the final response in the client; there is no OCR, VLM, or PEQA tool.
 
 ## Full Map Workflow
 
@@ -28,7 +35,7 @@ runtime and weights. Otherwise skip processing and supply GCPs, extent, bounds, 
 
 ```text
 geomap_list_capabilities
-  -> geomap_prepare_detectors() with confirmation when exposed and needed
+  -> geomap_prepare_detectors() with confirmation when map_processing is not ready
   -> geomap_register_map(path)
   -> geomap_process_image(map_id) when ready
   -> client reads CRS, labels, and GCPs
@@ -162,7 +169,7 @@ when reporting a failure.
 | `registry_corrupt` | Back up and remove the invalid registry under the configured cache root, restart, and re-register maps. |
 | `unsupported_media` | Use a supported map image or the required JSON bundle resource. |
 | `oversize_image` | Use an operator-approved smaller file; do not bypass server limits. |
-| `missing_extra` | Ask the operator to install/configure the reported optional dependency or manifest asset using the supplied requirement text. |
+| `missing_extra` | Read `details.missing_requirements` for the full list, then follow `recovery_hints`: call `geomap_prepare_detectors` with user confirmation when it is offered, otherwise report the requirements to the operator. Do not run the quoted installer commands yourself; your shell is not the server's environment. |
 | `invalid_bounds` | Correct CRS, GCPs, pixel extent, coordinate ranges, or degeneracy. |
 | `georef_required` | Supply inline bounds/georef or create stored georef state. |
 | `unknown_provider` | Correct provider IDs/options and consult capability output. |

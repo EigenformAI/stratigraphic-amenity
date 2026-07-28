@@ -4,16 +4,25 @@ Stratigraphic Amenity 0.1.0 supports CPython 3.11 (`>=3.11,<3.12`). The MCP serv
 stdio only. Linux is the primary tested platform; the registry uses `fcntl` locking on POSIX
 and falls back to unlocked writes where `fcntl` is unavailable.
 
-## Published Package
-
-Create an isolated environment and install only the capabilities needed:
+## Source Checkout (Current Supported Route)
 
 ```bash
-python3.11 -m venv .venv
-. .venv/bin/activate
-python -m pip install stratigraphic-amenity
-python -c "import stratigraphic_amenity as sa; print(sa.__version__)"
+git clone https://github.com/EigenformAI/stratigraphic-amenity.git
+cd stratigraphic-amenity
+uv sync --group dev --extra mcp --extra geo --extra assets --extra detectors
+uv run --no-sync python -c "import stratigraphic_amenity as sa; print(sa.__version__)"
+uv run --no-sync pytest
 ```
+
+`uv sync` is explicit. Entering the directory does not install dependencies.
+
+Detector support is opt-out, not opt-in: the commands above include it because layout detection
+is the primary capability, and the MCP server cannot install Python packages into itself later.
+Omit `--extra detectors --extra assets` for a georeference- and knowledge-only environment, or
+when you need `knowledge-semantic` (see the conflict note below). uv has no `default-extras`
+setting, so this default is expressed in the documented commands rather than in `pyproject.toml`.
+
+## Installation Profiles
 
 | Profile | pip extra | Purpose |
 | --- | --- | --- |
@@ -25,29 +34,32 @@ python -c "import stratigraphic_amenity as sa; print(sa.__version__)"
 | Network knowledge | `knowledge-network` | HTTP source sync and live providers. |
 | Earth Engine | `knowledge-earthengine` | Google Earth Engine client; external authentication required. |
 | Semantic knowledge | `knowledge-semantic` | Sentence Transformers and Torch; install the PEACE knowledge asset. |
-| Detectors | `detectors` | PEACE-compatible YOLOv10 runtime dependencies; install runtime and weights separately. |
-
-Example combined installation:
-
-```bash
-python -m pip install 'stratigraphic-amenity[mcp,geo,knowledge-network]'
-```
+| Detectors | `detectors` | PEACE-compatible YOLOv10 runtime dependencies. Included by default; omit deliberately. Install runtime and weights separately, or call `geomap_prepare_detectors`. |
 
 Do not install `detectors` and `knowledge-semantic` together. Their declared Torch ranges
 conflict; use separate environments. Both can share the same data root and downloaded knowledge
 assets.
 
-## Source Checkout
+## CPU Detector Setup
 
 ```bash
-git clone https://github.com/EigenformAI/stratigraphic-amenity.git
-cd stratigraphic-amenity
-uv sync --group dev --extra mcp --extra geo
-uv run python -c "import stratigraphic_amenity as sa; print(sa.__version__)"
-uv run pytest
+uv sync --group dev --extra mcp --extra assets --extra detectors
+uv run --no-sync stratigraphic-amenity-assets peace-yolov10-runtime
+uv run --no-sync stratigraphic-amenity-assets peace-layout-detectors
+uv run --no-sync python -c "import cpuinfo, cv2, torch; print(torch.__version__)"
 ```
 
-`uv sync` is explicit. Entering the directory does not install dependencies.
+The validated source profile binds Torch 2.0.1 and torchvision 0.15.2 to PyTorch's
+[CPU wheel index](https://pytorch.org/get-started/previous-versions/) using uv's
+[explicit-index configuration](https://docs.astral.sh/uv/guides/integration/pytorch/). It uses
+`opencv-python-headless`; do not install another OpenCV wheel flavor in the same environment.
+If an application deliberately replaces it with the GUI build on Ubuntu, that build may also
+need `libgl1` and `libglib2.0-0`.
+
+## Published Package (After Publication)
+
+Version 0.1.0 is not currently available from PyPI. Once published, install only the needed
+extras, for example `python -m pip install 'stratigraphic-amenity[mcp,geo]'`.
 
 ## Configure Local State
 
@@ -89,15 +101,14 @@ The three manifest entries are approved attribution/download paths:
 - `peace-knowledge-base`: source-sync K2 (MIT), USGS earthquake data (CC0/public domain), and GEM
   active-fault data (CC BY-SA 4.0).
 
-Install all assets into the default XDG data root:
+Install all assets into `GEOMAP_DATA_ROOT`, falling back to the XDG data root:
 
 ```bash
-python -m pip install 'stratigraphic-amenity[assets]'
-stratigraphic-amenity-assets --all
+uv run --no-sync stratigraphic-amenity-assets --all
 ```
 
-Use `--root PATH` to select another data root and `--force` to atomically replace an existing
-installation. Set `GEOMAP_DATA_ROOT` to that same path when running the SDK or MCP server. The
+Root precedence is explicit `--root`, then `GEOMAP_DATA_ROOT`, then the XDG default. Use
+`--force` to atomically replace an existing installation. The
 installer confines destinations to the selected root, extracts only declared archive subtrees,
 rejects traversal/symlinks and extraction-size overflow, verifies source-tree and weight-archive
 digests, and applies the documented path-hook removal to the PEACE runtime.
@@ -145,7 +156,7 @@ The operator or client must read the map's CRS and coordinates; OCR and a VLM ar
 ## Clean-Clone Verification
 
 ```bash
-uv sync --group dev --extra mcp --extra geo
+uv sync --group dev --extra mcp --extra geo --extra assets --extra detectors
 uv run pytest
 uv run ruff check .
 uv run stratigraphic-amenity-assets --list

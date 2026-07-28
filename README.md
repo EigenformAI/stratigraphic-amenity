@@ -22,7 +22,7 @@ Version 0.1.0 provides:
 - local-mirror and explicit live knowledge-provider interfaces;
 - structured warnings, counts, provenance, and persistent knowledge bundles;
 - standalone SVG and optional map-annotated PNG overlays;
-- eight default MCP tools, one opt-in detector provisioning tool, and resource reads over local stdio.
+- nine MCP tools, including detector provisioning, and resource reads over local stdio.
 
 Version 0.1.0 does **not** bundle a map or optional PEACE assets in the Python distributions.
 The attributed asset installer source-syncs the PEACE YOLOv10 runtime and knowledge base from a
@@ -78,12 +78,18 @@ units.
 ## Five-Minute MCP Start
 
 ```bash
-uv sync --group dev --extra mcp --extra geo
+uv sync --group dev --extra mcp --extra geo --extra assets --extra detectors
 export GEOMAP_DATA_ROOT="$PWD/data"
 export GEOMAP_CACHE_ROOT="$PWD/.cache"
 export GEOMAP_MCP_ALLOWED_ROOTS="$PWD/data:$PWD/.cache"
 uv run --no-sync stratigraphic-amenity-mcp
 ```
+
+`detectors` and `assets` are included by default because layout detection is the main reason to
+run this server, and they cannot be added later from the client's shell. Together they add about
+900 MB of CPU-only wheels. Drop `--extra detectors --extra assets` for a georeference- and
+knowledge-only server, and drop them if you need `knowledge-semantic`, whose Torch range
+conflicts. On first use, call `geomap_prepare_detectors` to fetch the runtime and weights.
 
 The executable speaks JSON-RPC over stdio only; launch it from an MCP host rather than typing
 requests into its terminal. A generic host entry after installation is:
@@ -107,10 +113,14 @@ requests into its terminal. A generic host entry after installation is:
 Relative paths are resolved from the server launch directory. Client configuration shape,
 working-directory behavior, and environment interpolation are host conventions, not MCP
 features. Call `geomap_list_capabilities` first. A user-supplied image must already be visible
-to the server and inside an allowed root before `geomap_register_map` can accept it. Detector
-preparation is disabled by default. Operators may expose it with
-`GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=true`; clients should obtain confirmation before invoking
-its manifest-pinned network downloads and disk writes.
+to the server and inside an allowed root before `geomap_register_map` can accept it.
+
+`geomap_prepare_detectors` is exposed by default, because acquiring the PEACE runtime and weights
+is a required step for most of what this package does and the client's shell is not the server's
+environment. It installs only the two manifest-pinned, digest-verified detector assets into
+`GEOMAP_DATA_ROOT`, and accepts no URLs, asset IDs, roots, or force flag. Clients should obtain
+user confirmation before invoking its network downloads and disk writes. Operators who need to
+withhold it can set `GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=false`.
 
 ## Workflow
 

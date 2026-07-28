@@ -77,6 +77,7 @@ def test_tool_definitions_expose_stable_names_and_annotations():
         "geomap_list_capabilities",
         "geomap_register_map",
         "geomap_process_image",
+        "geomap_prepare_detectors",
         "geomap_georeference",
         "geomap_query_knowledge",
         "geomap_query_map",
@@ -86,6 +87,11 @@ def test_tool_definitions_expose_stable_names_and_annotations():
     assert tools["geomap_query_knowledge"]["annotations"]["readOnlyHint"] is False
     assert tools["geomap_query_map"]["annotations"]["readOnlyHint"] is False
     assert tools["geomap_process_image"]["annotations"]["readOnlyHint"] is False
+    assert tools["geomap_prepare_detectors"]["annotations"] == {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
     assert tools["geomap_register_map"]["annotations"]["readOnlyHint"] is False
     assert tools["geomap_query_knowledge"]["annotations"]["idempotentHint"] is False
     assert tools["geomap_query_map"]["annotations"]["idempotentHint"] is False
