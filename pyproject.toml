@@ -32,7 +32,7 @@ assets = [
 detectors = [
     "huggingface-hub>=0.24,<1",
     "matplotlib==3.9.2",
-    "numpy==1.26.4",
+    "numpy==2.4.6",
     "opencv-python-headless==4.10.0.84",
     "pandas==2.2.2",
     "pillow==11.0.0",
@@ -62,7 +62,7 @@ knowledge-semantic = [
     "torch>=2.2,<3",
 ]
 geo = [
-    "numpy==1.26.4",
+    "numpy==2.4.6",
     "pyproj>=3.4,<4",
 ]
 mcp = [
