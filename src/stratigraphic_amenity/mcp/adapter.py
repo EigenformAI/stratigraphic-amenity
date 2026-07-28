@@ -5,6 +5,8 @@ from __future__ import annotations
 import functools
 import importlib.util
 import json
+import os
+import re
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -12,6 +14,9 @@ from typing import Any, Callable, Mapping
 from ..knowledge import Bounds, KnowledgeBundle, KnowledgeItem, KnowledgeRequest
 from ..knowledge import KnowledgeService
 from ..knowledge.visualization import extract_knowledge_overlay, render_knowledge_overlay_svg
+from ..asset_installer import AssetInstallError
+from ..map_processing.detectors.preflight import detector_preflight
+from ..map_processing.preparation import DetectorPreparationError, prepare_detectors
 from .errors import McpToolError
 from .images import make_inline_preview
 from .resources import ResourceRegistry
@@ -85,26 +90,27 @@ class GeomapMcpAdapter:
         component_model = config.resolved_component_model_path.exists()
         legend_model = config.resolved_legend_model_path.exists()
         detector_runtime = _managed_runtime_present(config.resolved_ultralytics_root)
-        detector_dependencies = all(
-            _module_available(name) for name in ("cv2", "matplotlib", "numpy", "torch", "yaml")
-        )
+        detector_failures = detector_preflight(config.resolved_ultralytics_root)
+        detector_dependencies = not detector_failures
         map_processing_missing = []
         if not detector_runtime:
             map_processing_missing.append(
                 "managed PEACE YOLOv10 runtime; run "
-                "`stratigraphic-amenity-assets peace-yolov10-runtime`"
+                "`stratigraphic-amenity-assets peace-yolov10-runtime "
+                '--root "$GEOMAP_DATA_ROOT"` in the server environment'
             )
-        if not detector_dependencies:
-            map_processing_missing.append("detector Python dependencies")
+        map_processing_missing.extend(detector_failures)
         if not component_model:
             map_processing_missing.append(
                 "component detector weights; run "
-                "`stratigraphic-amenity-assets peace-layout-detectors`"
+                "`stratigraphic-amenity-assets peace-layout-detectors "
+                '--root "$GEOMAP_DATA_ROOT"` in the server environment'
             )
         if not legend_model:
             map_processing_missing.append(
                 "legend detector weights; run "
-                "`stratigraphic-amenity-assets peace-layout-detectors`"
+                "`stratigraphic-amenity-assets peace-layout-detectors "
+                '--root "$GEOMAP_DATA_ROOT"` in the server environment'
             )
         providers = [
             _provider_capability(registration, getattr(service, "config", None))
@@ -122,6 +128,7 @@ class GeomapMcpAdapter:
                 configured=component_model and legend_model,
                 missing=map_processing_missing,
             ),
+            "detector_preparation": _detector_preparation_capability(config),
             "georeferencing": _capability(
                 installed=geo_installed,
                 configured=True,
@@ -201,8 +208,11 @@ class GeomapMcpAdapter:
         try:
             result = self._map().process_image(image_path)
         except Exception as exc:  # noqa: BLE001 - optional detector failures need typed MCP errors.
-            if exc.__class__.__name__ in {"OptionalDependencyError", "DetectorLoadError"}:
-                raise McpToolError("missing_extra", str(exc), trace_id=trace_id) from exc
+            cause = _detector_cause(exc)
+            if exc.__class__.__name__ in {"OptionalDependencyError", "DetectorLoadError"} or cause:
+                raise McpToolError(
+                    "missing_extra", str(exc), trace_id=trace_id, cause=cause
+                ) from exc
             raise
         # One map carries many artifacts; coalesce their registrations into a
         # single locked merge-write instead of one per artifact.
@@ -232,6 +242,42 @@ class GeomapMcpAdapter:
             trace_id=trace_id,
             content=content,
             resource_links=resource_links,
+        )
+
+    @_traced
+    def prepare_detectors(self) -> dict[str, Any]:
+        trace_id = _active_trace_id()
+        if not detector_preparation_enabled():
+            raise McpToolError(
+                "preparation_disabled",
+                "Detector preparation is disabled by the server operator.",
+                recovery_hints=["Set GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=true and restart the server."],
+            )
+        try:
+            result = prepare_detectors(self._map_config())
+        except DetectorPreparationError as exc:
+            raise McpToolError("detector_configuration_mismatch", str(exc)) from exc
+        except AssetInstallError as exc:
+            cause = _detector_cause(exc)
+            raise McpToolError(
+                "asset_install_failed",
+                "An approved detector asset could not be installed.",
+                cause=cause,
+                recovery_hints=[
+                    "Ask the server operator to inspect stderr using trace_id and repair or "
+                    "force-reinstall the incomplete asset."
+                ],
+            ) from exc
+        map_status = self.list_capabilities()["structuredContent"]["capabilities"]["map_processing"]
+        return success_result(
+            structured={
+                "assets": list(result.assets),
+                "map_processing": map_status,
+                "performs_network_access": True,
+                "warnings": [],
+            },
+            text_summary=f"Prepared {len(result.assets)} approved detector assets.",
+            trace_id=trace_id,
         )
 
     @_traced
@@ -612,14 +658,66 @@ def _managed_runtime_present(root: Any) -> bool:
         return False
 
 
-def _capability(*, installed: bool, configured: bool, missing: list[str]) -> dict[str, Any]:
+def _capability(
+    *, installed: bool, configured: bool, missing: list[str], registered: bool = True
+) -> dict[str, Any]:
     return {
-        "registered": True,
+        "registered": registered,
         "installed": bool(installed),
         "configured": bool(configured),
         "ready": bool(installed and configured and not missing),
         "missing_requirements": list(missing),
     }
+
+
+def detector_preparation_enabled() -> bool:
+    return os.getenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
+    }
+
+
+def _detector_preparation_capability(config: Any) -> dict[str, Any]:
+    enabled = detector_preparation_enabled()
+    expected_models = config.data_root / "assets" / "models"
+    expected_runtime = config.data_root / "assets" / "runtime" / "ultralytics"
+    configured = (
+        config.model_root.resolve() == expected_models.resolve()
+        and config.resolved_ultralytics_root.resolve() == expected_runtime.resolve()
+    )
+    installed = _module_available("gdown")
+    missing = []
+    if not enabled:
+        missing.append("operator opt-in GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=true")
+    if not installed:
+        missing.append("install the 'assets' extra in the server environment")
+    if not configured:
+        missing.append("detector paths must use the GEOMAP_DATA_ROOT manifest destinations")
+    return _capability(
+        registered=enabled,
+        installed=installed,
+        configured=configured,
+        missing=missing,
+    )
+
+
+def _detector_cause(exc: BaseException) -> dict[str, Any]:
+    current: BaseException | None = exc
+    seen = set()
+    for _ in range(5):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        if isinstance(current, ModuleNotFoundError) and current.name:
+            return {"type": "missing_python_module", "module": current.name}
+        match = re.search(r"([A-Za-z0-9_.+-]+\.so(?:\.\d+)*)", str(current))
+        if match:
+            return {"type": "missing_shared_library", "library": match.group(1)}
+        current = current.__cause__ or current.__context__
+    return {}
 
 
 def _provider_capability(registration: Any, config: Any | None) -> dict[str, Any]:

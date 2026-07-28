@@ -15,6 +15,7 @@ class McpToolError(Exception):
     trace_id: str | None = None
     details: dict[str, Any] = field(default_factory=dict)
     recovery_hints: list[str] = field(default_factory=list)
+    cause: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         super().__init__(self.message)
@@ -27,4 +28,6 @@ class McpToolError(Exception):
             data["details"] = dict(self.details)
         if self.recovery_hints:
             data["recovery_hints"] = list(self.recovery_hints)
+        if self.cause:
+            data["cause"] = dict(self.cause)
         return data

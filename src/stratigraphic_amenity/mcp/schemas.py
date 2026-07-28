@@ -207,6 +207,13 @@ def tool_definitions() -> list[dict[str, Any]]:
             constraints=(_exactly_one("map_id", "map_uri"),),
         ),
         _tool(
+            "geomap_prepare_detectors",
+            "Download and install only the manifest-approved PEACE runtime and detector weights into the server data root. Disabled unless explicitly enabled by the operator.",
+            {},
+            read_only=False,
+            idempotent=True,
+        ),
+        _tool(
             "geomap_georeference",
             "Fit an affine georeference from at least two client-read GCPs. Persists georef state when a map reference is supplied; inspect residual and warnings next.",
             {

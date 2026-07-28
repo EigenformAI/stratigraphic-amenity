@@ -13,11 +13,11 @@ import stat
 import sys
 import tempfile
 import tomllib
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.request import Request, urlopen
 from zipfile import BadZipFile, ZipFile
 
-from .paths import default_data_root
+from .paths import configured_data_root
 
 
 class AssetInstallError(RuntimeError):
@@ -90,14 +90,44 @@ def install_asset(
     return InstallResult(str(asset["id"]), "installed", destination)
 
 
-def main() -> int:
+def provision_assets(
+    asset_ids: Iterable[str],
+    *,
+    root: str | Path,
+    force: bool = False,
+    manifest: Mapping[str, Any] | None = None,
+    download_file: DownloadFile | None = None,
+) -> list[InstallResult]:
+    """Install an ordered set of approved manifest assets."""
+
+    requested = tuple(dict.fromkeys(str(asset_id) for asset_id in asset_ids))
+    if not requested:
+        raise AssetInstallError("At least one asset ID is required.")
+    assets = list((manifest or load_manifest()).get("asset", []))
+    by_id: dict[str, dict[str, Any]] = {}
+    for asset in assets:
+        asset_id = str(asset["id"])
+        if asset_id in by_id:
+            raise AssetInstallError(f"Duplicate asset ID in manifest: {asset_id}")
+        by_id[asset_id] = asset
+    unknown = [asset_id for asset_id in requested if asset_id not in by_id]
+    if unknown:
+        raise AssetInstallError(f"Unknown asset ID: {unknown[0]}")
+    return [
+        install_asset(by_id[asset_id], root=root, force=force, download_file=download_file)
+        for asset_id in requested
+    ]
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("asset_id", nargs="?")
     parser.add_argument("--all", action="store_true", help="Install every approved asset.")
     parser.add_argument("--list", action="store_true", help="List sources without downloading.")
-    parser.add_argument("--root", type=Path, default=default_data_root())
+    parser.add_argument("--root", type=Path)
     parser.add_argument("--force", action="store_true", help="Atomically replace an installation.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    root = configured_data_root(args.root)
     assets = load_manifest()["asset"]
 
     if args.list:
@@ -111,17 +141,13 @@ def main() -> int:
 
     if args.all == bool(args.asset_id):
         parser.error("choose exactly one asset ID or --all")
-    selected = assets if args.all else [asset for asset in assets if asset["id"] == args.asset_id]
-    if not selected:
-        print(f"Unknown asset ID: {args.asset_id}", file=sys.stderr)
-        return 2
+    selected_ids = [str(asset["id"]) for asset in assets] if args.all else [str(args.asset_id)]
     try:
-        for asset in selected:
-            result = install_asset(asset, root=args.root, force=args.force)
+        for result in provision_assets(selected_ids, root=root, force=args.force, manifest={"asset": assets}):
             print(f"{result.asset_id}: {result.status} at {result.destination}")
     except AssetInstallError as exc:
         print(str(exc), file=sys.stderr)
-        return 3
+        return 2 if str(exc).startswith("Unknown asset ID:") else 3
     return 0
 
 
@@ -280,4 +306,11 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["AssetInstallError", "InstallResult", "install_asset", "load_manifest", "main"]
+__all__ = [
+    "AssetInstallError",
+    "InstallResult",
+    "install_asset",
+    "load_manifest",
+    "main",
+    "provision_assets",
+]

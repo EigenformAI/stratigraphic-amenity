@@ -8,7 +8,9 @@ server should read [docs/agent-guide.md](docs/agent-guide.md).
 - Product: Stratigraphic Amenity
 - Distribution: `stratigraphic-amenity`
 - Import: `stratigraphic_amenity`
-- MCP executable and server: `stratigraphic-amenity-mcp`, `stratigraphic-amenity`
+- MCP server name: `stratigraphic-amenity`
+- MCP executable: `stratigraphic-amenity-mcp`
+- Asset executable: `stratigraphic-amenity-assets`
 - Domain protocol identifiers: `geomap_*`, `geomap://`, and `GEOMAP_*` remain unchanged
 - Release: 0.1.0, Python 3.11 only, MIT
 

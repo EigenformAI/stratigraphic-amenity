@@ -10,8 +10,10 @@ evidence; it does not read text, decide which evidence is true, or produce the f
    still lack a usable local mirror or source coverage.
 3. Register only an existing user-supplied image that is visible to the local server and inside
    an allowed root.
-4. Call `geomap_process_image` only when `map_processing.ready` is true. If false, follow its
-   `missing_requirements` installer commands or continue with a georeference/knowledge-only flow.
+4. Call `geomap_process_image` only when `map_processing.ready` is true. If false and
+   `geomap_prepare_detectors` is exposed, request user confirmation before its network/disk side
+   effects and call it once. Otherwise report the requirements to the operator or continue with a
+   georeference/knowledge-only flow; do not assume the MCP client's shell is the server shell.
 5. Obtain CRS text, labels, and GCPs from the user or a separate OCR/VLM system.
 6. Prefer at least three non-collinear GCPs; inspect affine residual in map CRS units.
 7. Treat `warnings`, `record_count`, `truncated`, and each item's `provenance` as evidence.
@@ -26,6 +28,7 @@ runtime and weights. Otherwise skip processing and supply GCPs, extent, bounds, 
 
 ```text
 geomap_list_capabilities
+  -> geomap_prepare_detectors() with confirmation when exposed and needed
   -> geomap_register_map(path)
   -> geomap_process_image(map_id) when ready
   -> client reads CRS, labels, and GCPs

@@ -133,7 +133,9 @@ class ResourceRegistry:
         return [{"label": f"root_{index + 1}"} for index, _ in enumerate(self.allowed_roots)]
 
     def register_map(self, path: str | Path) -> dict[str, Any]:
-        source = self._validate_existing_file(path, error_code="disallowed_path")
+        source = self._validate_existing_file(
+            path, error_code="disallowed_path", path_origin="input_image"
+        )
         mime_type = mime_type_for_path(source)
         if mime_type not in IMAGE_MIME_TYPES:
             raise McpToolError("unsupported_media", f"Unsupported map media type: {mime_type}")
@@ -168,7 +170,9 @@ class ResourceRegistry:
         label: str | None = None,
         mime_type: str | None = None,
     ) -> dict[str, Any]:
-        artifact_path = self._validate_existing_file(path, error_code="disallowed_path")
+        artifact_path = self._validate_existing_file(
+            path, error_code="disallowed_path", path_origin="generated_artifact"
+        )
         canonical = str(artifact_path)
         for artifact_id, entry in self._data["artifacts"].items():
             if entry.get("path") == canonical:
@@ -222,7 +226,9 @@ class ResourceRegistry:
         map_id: str | None = None,
         role: str = "knowledge_overlay",
     ) -> dict[str, Any]:
-        overlay_path = self._validate_existing_file(path, error_code="disallowed_path")
+        overlay_path = self._validate_existing_file(
+            path, error_code="disallowed_path", path_origin="generated_artifact"
+        )
         overlay_id = uuid.uuid4().hex
         mime_type = mime_type_for_path(overlay_path)
         suffix = _resource_suffix(overlay_path, mime_type)
@@ -359,7 +365,9 @@ class ResourceRegistry:
                 self._dirty = False
                 self._write()
 
-    def _validate_existing_file(self, path: str | Path, *, error_code: str) -> Path:
+    def _validate_existing_file(
+        self, path: str | Path, *, error_code: str, path_origin: str
+    ) -> Path:
         source = Path(path).expanduser()
         try:
             resolved = source.resolve(strict=True)
@@ -368,7 +376,15 @@ class ResourceRegistry:
         if not resolved.is_file():
             raise McpToolError(error_code, "Path is not a regular file.")
         if not self._inside_allowed_root(resolved):
-            raise McpToolError(error_code, "Path is outside configured MCP allowed roots.")
+            raise McpToolError(
+                error_code,
+                "Path is outside configured MCP allowed roots.",
+                details={
+                    "path_origin": path_origin,
+                    "basename": resolved.name,
+                    "required_policy": "GEOMAP_MCP_ALLOWED_ROOTS",
+                },
+            )
         return resolved
 
     def _inside_allowed_root(self, path: Path) -> bool:

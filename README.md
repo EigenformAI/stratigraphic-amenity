@@ -22,7 +22,7 @@ Version 0.1.0 provides:
 - local-mirror and explicit live knowledge-provider interfaces;
 - structured warnings, counts, provenance, and persistent knowledge bundles;
 - standalone SVG and optional map-annotated PNG overlays;
-- eight MCP tools and resource reads over local stdio.
+- eight default MCP tools, one opt-in detector provisioning tool, and resource reads over local stdio.
 
 Version 0.1.0 does **not** bundle a map or optional PEACE assets in the Python distributions.
 The attributed asset installer source-syncs the PEACE YOLOv10 runtime and knowledge base from a
@@ -31,12 +31,13 @@ Selected source trees and the weight archive are SHA-256 verified. The Ultralyti
 is CC0/public domain, and GEM data is CC BY-SA 4.0. The package does not include OCR, a VLM,
 automatic GCP extraction, remote MCP transport, or final PEQA answer generation.
 
-Enable HIE and local PEACE knowledge in a detector environment:
+Enable HIE from the current supported source checkout:
 
 ```bash
-python -m pip install 'stratigraphic-amenity[assets,detectors]'
-stratigraphic-amenity-assets --all
-stratigraphic-amenity-assets --list
+uv sync --group dev --extra mcp --extra assets --extra detectors
+uv run --no-sync stratigraphic-amenity-assets peace-yolov10-runtime
+uv run --no-sync stratigraphic-amenity-assets peace-layout-detectors
+uv run --no-sync stratigraphic-amenity-assets --list
 ```
 
 The `detectors` and `knowledge-semantic` extras require separate environments because their Torch
@@ -44,13 +45,13 @@ ranges conflict. Both environments may use the same XDG data root and installed 
 
 ## Five-Minute Python Start
 
-Install the base package and georeferencing extra:
+Install the source checkout and georeferencing extra:
 
 ```bash
-python3.11 -m venv .venv
-. .venv/bin/activate
-python -m pip install 'stratigraphic-amenity[geo]'
-python -c "import stratigraphic_amenity as sa; print(sa.__version__)"
+git clone https://github.com/EigenformAI/stratigraphic-amenity.git
+cd stratigraphic-amenity
+uv sync --group dev --extra geo
+uv run --no-sync python -c "import stratigraphic_amenity as sa; print(sa.__version__)"
 ```
 
 Georeference coordinates read from your own map image:
@@ -77,11 +78,11 @@ units.
 ## Five-Minute MCP Start
 
 ```bash
-python -m pip install 'stratigraphic-amenity[mcp,geo]'
+uv sync --group dev --extra mcp --extra geo
 export GEOMAP_DATA_ROOT="$PWD/data"
 export GEOMAP_CACHE_ROOT="$PWD/.cache"
 export GEOMAP_MCP_ALLOWED_ROOTS="$PWD/data:$PWD/.cache"
-stratigraphic-amenity-mcp
+uv run --no-sync stratigraphic-amenity-mcp
 ```
 
 The executable speaks JSON-RPC over stdio only; launch it from an MCP host rather than typing
@@ -106,7 +107,10 @@ requests into its terminal. A generic host entry after installation is:
 Relative paths are resolved from the server launch directory. Client configuration shape,
 working-directory behavior, and environment interpolation are host conventions, not MCP
 features. Call `geomap_list_capabilities` first. A user-supplied image must already be visible
-to the server and inside an allowed root before `geomap_register_map` can accept it.
+to the server and inside an allowed root before `geomap_register_map` can accept it. Detector
+preparation is disabled by default. Operators may expose it with
+`GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=true`; clients should obtain confirmation before invoking
+its manifest-pinned network downloads and disk writes.
 
 ## Workflow
 

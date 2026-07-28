@@ -33,10 +33,11 @@ detectors = [
     "huggingface-hub>=0.24,<1",
     "matplotlib==3.9.2",
     "numpy==1.26.4",
-    "opencv-python==4.10.0.84",
+    "opencv-python-headless==4.10.0.84",
     "pandas==2.2.2",
     "pillow==11.0.0",
     "psutil==6.0.0",
+    "py-cpuinfo==9.0.0",
     "pyyaml>=6,<7",
     "requests>=2,<3",
     "torch==2.0.1",
@@ -130,3 +131,12 @@ conflicts = [
         { extra = "knowledge-semantic" },
     ],
 ]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", extra = "detectors" }]
+torchvision = [{ index = "pytorch-cpu", extra = "detectors" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

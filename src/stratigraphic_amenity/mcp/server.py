@@ -15,7 +15,7 @@ import traceback
 from typing import Any, Mapping
 
 from .. import __version__
-from .adapter import GeomapMcpAdapter
+from .adapter import GeomapMcpAdapter, detector_preparation_enabled
 from .errors import McpToolError
 from .schemas import new_trace_id, tool_definitions
 
@@ -44,7 +44,11 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
     adapter = adapter or GeomapMcpAdapter()
     server = Server("stratigraphic-amenity")
     setattr(server, "_stratigraphic_adapter", adapter)
-    definitions = {definition["name"]: definition for definition in tool_definitions()}
+    definitions = {
+        definition["name"]: definition
+        for definition in tool_definitions()
+        if definition["name"] != "geomap_prepare_detectors" or detector_preparation_enabled()
+    }
 
     @server.list_tools()
     async def list_tools() -> list[Any]:
@@ -68,6 +72,7 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
         trace_id: str | None = None,
         details: Mapping[str, Any] | None = None,
         recovery_hints: list[str] | None = None,
+        cause: Mapping[str, Any] | None = None,
     ) -> Any:
         # Every error envelope carries a code and a trace id (generated if the
         # failure had none), mirroring the success-path structuredContent shape so
@@ -78,6 +83,8 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
             err["details"] = dict(details)
         if recovery_hints:
             err["recovery_hints"] = list(recovery_hints)
+        if cause:
+            err["cause"] = dict(cause)
         structured = {
             "schema_version": "geomap-error/v1",
             "isError": True,
@@ -125,6 +132,7 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
                 trace_id=trace_id,
                 details=exc.details,
                 recovery_hints=exc.recovery_hints,
+                cause=exc.cause,
             )
         except Exception as exc:  # noqa: BLE001 - unexpected failures must not crash the server.
             traceback.print_exc(file=sys.stderr)
@@ -239,6 +247,8 @@ def _call_adapter(adapter: GeomapMcpAdapter, name: str, arguments: Mapping[str, 
         return adapter.register_map(args["path"])
     if name == "geomap_process_image":
         return adapter.process_image(map_id=args.get("map_id"), map_uri=args.get("map_uri"))
+    if name == "geomap_prepare_detectors":
+        return adapter.prepare_detectors()
     if name == "geomap_georeference":
         return adapter.georeference(
             crs=args["crs"],
