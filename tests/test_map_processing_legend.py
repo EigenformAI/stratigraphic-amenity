@@ -1,6 +1,6 @@
 import pytest
 
-from peace_tool_pool.map_processing.legend import build_legend_entries
+from stratigraphic_amenity.map_processing.legend import build_legend_entries
 
 cv2 = pytest.importorskip("cv2")
 np = pytest.importorskip("numpy")

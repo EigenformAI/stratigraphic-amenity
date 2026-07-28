@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from peace_tool_pool.knowledge import Bounds, KnowledgeConfig, KnowledgeRequest, KnowledgeService
-from peace_tool_pool.knowledge.cache import write_json_atomic
-from peace_tool_pool.knowledge.errors import MissingAssetError, ProviderError, ProviderOptionError
-from peace_tool_pool.knowledge.sources.manifest import SourceManifest
-from peace_tool_pool.knowledge.types import SCHEMA_VERSION
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeConfig, KnowledgeRequest, KnowledgeService
+from stratigraphic_amenity.knowledge.cache import write_json_atomic
+from stratigraphic_amenity.knowledge.errors import MissingAssetError, ProviderError, ProviderOptionError
+from stratigraphic_amenity.knowledge.sources.manifest import SourceManifest
+from stratigraphic_amenity.knowledge.types import SCHEMA_VERSION
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "knowledge"

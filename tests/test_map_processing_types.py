@@ -1,4 +1,4 @@
-from peace_tool_pool.map_processing.types import (
+from stratigraphic_amenity.map_processing.types import (
     ArtifactRef,
     Detection,
     ImageSize,

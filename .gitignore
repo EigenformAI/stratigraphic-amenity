@@ -36,3 +36,5 @@ dependencies/ultralytics/
 # Outputs
 *.png
 *.svg
+!docs/images/*.png
+!docs/images/*.svg

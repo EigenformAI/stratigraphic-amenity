@@ -1,10 +1,13 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
+import random
+import time
 
 import pytest
 
-from peace_tool_pool.mcp.errors import McpToolError
-from peace_tool_pool.mcp.resources import ResourceRegistry
+from stratigraphic_amenity.mcp.errors import McpToolError
+from stratigraphic_amenity.mcp.resources import ResourceRegistry
 
 
 PNG_1X1 = base64.b64decode(
@@ -134,3 +137,77 @@ def test_reading_stale_artifact_returns_typed_error(tmp_path, monkeypatch):
         registry.read_resource(artifact["uri"])
 
     assert exc_info.value.code == "artifact_not_found"
+
+
+def test_registry_rejects_unsupported_and_oversize_sources(tmp_path, monkeypatch):
+    _, data_root, cache_root = _registry(tmp_path, monkeypatch)
+    text_path = data_root / "map.txt"
+    image_path = data_root / "map.png"
+    text_path.write_text("not an image", encoding="utf-8")
+    image_path.write_bytes(PNG_1X1)
+    registry = ResourceRegistry(
+        data_root=data_root,
+        cache_root=cache_root,
+        allowed_roots=[data_root, cache_root],
+        max_source_bytes=1,
+    )
+
+    with pytest.raises(McpToolError, match="Unsupported") as unsupported:
+        registry.register_map(text_path)
+    with pytest.raises(McpToolError) as oversize:
+        registry.register_map(image_path)
+
+    assert unsupported.value.code == "unsupported_media"
+    assert oversize.value.code == "oversize_image"
+
+
+def test_registry_enforces_resource_read_limit(tmp_path, monkeypatch):
+    _, data_root, cache_root = _registry(tmp_path, monkeypatch)
+    registry = ResourceRegistry(
+        data_root=data_root,
+        cache_root=cache_root,
+        allowed_roots=[data_root, cache_root],
+        max_resource_read_bytes=1,
+    )
+    artifact_path = cache_root / "large.png"
+    artifact_path.write_bytes(PNG_1X1)
+    artifact = registry.register_artifact(artifact_path, role="component_crop", stage="hie")
+
+    with pytest.raises(McpToolError) as exc_info:
+        registry.read_resource(artifact["uri"])
+
+    assert exc_info.value.code == "oversize_image"
+
+
+def test_corrupt_registry_fails_closed_with_recovery_hint(tmp_path, monkeypatch):
+    _, _, cache_root = _registry(tmp_path, monkeypatch)
+    registry_path = cache_root / "mcp" / "v1" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(McpToolError) as exc_info:
+        ResourceRegistry.from_env(base_dir=tmp_path)
+
+    assert exc_info.value.code == "registry_corrupt"
+    assert exc_info.value.recovery_hints
+    assert str(registry_path) not in exc_info.value.message
+
+
+def test_concurrent_registry_writes_preserve_all_maps_with_jitter(tmp_path, monkeypatch):
+    _, data_root, _ = _registry(tmp_path, monkeypatch)
+    paths = []
+    for index in range(20):
+        path = data_root / f"map-{index}.png"
+        path.write_bytes(PNG_1X1)
+        paths.append(path)
+
+    def register(path):
+        time.sleep(random.uniform(0, 0.02))
+        return ResourceRegistry.from_env(base_dir=tmp_path).register_map(path)["map_id"]
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        map_ids = list(executor.map(register, paths))
+
+    reloaded = ResourceRegistry.from_env(base_dir=tmp_path)
+    assert len(set(map_ids)) == len(paths)
+    assert len(reloaded._data["maps"]) == len(paths)

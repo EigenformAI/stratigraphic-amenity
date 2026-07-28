@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from peace_tool_pool.knowledge import Bounds, KnowledgeRequest
-from peace_tool_pool.knowledge.errors import MissingAssetError, ProviderOptionError
-from peace_tool_pool.knowledge.providers import earthquakes, faults
-from peace_tool_pool.knowledge.providers.earthquakes import (
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeRequest
+from stratigraphic_amenity.knowledge.errors import MissingAssetError, ProviderOptionError
+from stratigraphic_amenity.knowledge.providers import earthquakes, faults
+from stratigraphic_amenity.knowledge.providers.earthquakes import (
     EarthquakeHistoryProvider,
     EarthquakeSourceBinding,
 )
-from peace_tool_pool.knowledge.providers.faults import ActiveFaultProvider, FaultSourceBinding
-from peace_tool_pool.knowledge.providers.rock import RockLookupProvider
+from stratigraphic_amenity.knowledge.providers.faults import ActiveFaultProvider, FaultSourceBinding
+from stratigraphic_amenity.knowledge.providers.rock import RockLookupProvider
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "knowledge"
@@ -356,6 +356,6 @@ def test_earthquake_provider_legacy_provenance_carries_usgs_attribution():
     provenance = provider.query(KnowledgeRequest(bounds=bounds))[0].provenance
 
     assert provenance["source_mode"] == "legacy_asset"
-    assert provenance["license"] == "See USGS source policy"
+    assert provenance["license"] == "CC0-1.0 / United States government public domain"
     assert provenance["citation"] == "USGS FDSN Event API"
     assert "USGS" in (provenance["attribution"] or "")

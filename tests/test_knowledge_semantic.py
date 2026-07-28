@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from peace_tool_pool.knowledge import KnowledgeRequest
-from peace_tool_pool.knowledge.errors import ProviderError
-from peace_tool_pool.knowledge.providers.semantic_k2 import (
+from stratigraphic_amenity.knowledge import KnowledgeRequest
+from stratigraphic_amenity.knowledge.errors import ProviderError
+from stratigraphic_amenity.knowledge.providers.semantic_k2 import (
     SemanticK2Provider,
     SemanticSearchResult,
     resolve_embedding_device,

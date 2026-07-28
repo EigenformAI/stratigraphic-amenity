@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+message: "If you use Stratigraphic Amenity, please cite this software and the PEACE paper that motivated its workflow."
+title: "Stratigraphic Amenity"
+type: software
+version: 0.1.0
+authors:
+  - name: "Eigenform"
+repository-code: "https://github.com/EigenformAI/stratigraphic-amenity"
+url: "https://github.com/EigenformAI/stratigraphic-amenity"
+license: MIT
+abstract: >-
+  A composable Python SDK and local Model Context Protocol server for
+  geologic-map processing, affine georeferencing, geological knowledge
+  retrieval, and evidence rendering. Stratigraphic Amenity adapts ideas and
+  selected MIT-licensed code from Microsoft PEACE while leaving OCR, VLM
+  interpretation, and final answer generation to the client.
+keywords:
+  - geologic maps
+  - georeferencing
+  - geology
+  - model context protocol
+  - MCP
+references:
+  - type: article
+    title: "PEACE: Empowering Geologic Map Holistic Understanding with MLLMs"
+    authors:
+      - family-names: Huang
+        given-names: Yangyu
+      - family-names: Gao
+        given-names: Tianyi
+      - family-names: Xu
+        given-names: Haoran
+      - family-names: Zhao
+        given-names: Qihao
+      - family-names: Song
+        given-names: Yang
+      - family-names: Gui
+        given-names: Zhipeng
+      - family-names: Lv
+        given-names: Tengchao
+      - family-names: Chen
+        given-names: Hao
+      - family-names: Cui
+        given-names: Lei
+      - family-names: Li
+        given-names: Scarlett
+      - family-names: Wei
+        given-names: Furu
+    year: 2025
+    identifiers:
+      - type: url
+        value: "https://arxiv.org/abs/2501.06184"
+        description: "arXiv:2501.06184"
+    repository-code: "https://github.com/microsoft/PEACE/tree/da994841fc97e5a19e3068a34a86297d17f3f3e2"

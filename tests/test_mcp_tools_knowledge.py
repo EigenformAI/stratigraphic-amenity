@@ -1,9 +1,9 @@
 import json
 
-from peace_tool_pool.knowledge import Bounds, KnowledgeConfig, KnowledgeService
-from peace_tool_pool.knowledge.types import KnowledgeItem
-from peace_tool_pool.mcp.adapter import GeomapMcpAdapter
-from peace_tool_pool.mcp.resources import ResourceRegistry
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeConfig, KnowledgeService
+from stratigraphic_amenity.knowledge.types import KnowledgeItem
+from stratigraphic_amenity.mcp.adapter import GeomapMcpAdapter
+from stratigraphic_amenity.mcp.resources import ResourceRegistry
 
 
 class EchoProvider:

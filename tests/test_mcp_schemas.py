@@ -1,13 +1,16 @@
 import json
 
-from peace_tool_pool.map_processing.types import (
+import pytest
+from jsonschema import ValidationError, validate
+
+from stratigraphic_amenity.map_processing.types import (
     ArtifactRef,
     Detection,
     ImageSize,
     MapProcessingResult,
 )
-from peace_tool_pool.mcp.resources import ResourceRegistry
-from peace_tool_pool.mcp.schemas import map_processing_result_to_mcp, tool_definitions
+from stratigraphic_amenity.mcp.resources import ResourceRegistry
+from stratigraphic_amenity.mcp.schemas import map_processing_result_to_mcp, tool_definitions
 
 
 def _registry(tmp_path, monkeypatch):
@@ -83,7 +86,55 @@ def test_tool_definitions_expose_stable_names_and_annotations():
     assert tools["geomap_query_knowledge"]["annotations"]["readOnlyHint"] is False
     assert tools["geomap_query_map"]["annotations"]["readOnlyHint"] is False
     assert tools["geomap_process_image"]["annotations"]["readOnlyHint"] is False
+    assert tools["geomap_register_map"]["annotations"]["readOnlyHint"] is False
+    assert tools["geomap_query_knowledge"]["annotations"]["idempotentHint"] is False
+    assert tools["geomap_query_map"]["annotations"]["idempotentHint"] is False
+    assert tools["geomap_render_knowledge_overlay"]["annotations"]["idempotentHint"] is False
+    assert tools["geomap_process_image"]["annotations"]["idempotentHint"] is False
+    assert tools["geomap_georeference"]["annotations"]["idempotentHint"] is False
     for tool in tools.values():
         assert tool["inputSchema"]["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         assert tool["outputSchema"]["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-        assert "Envelope-only contract" in tool["outputSchema"]["description"]
+        assert tool["outputSchema"]["properties"]["schema_version"]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments"),
+    [
+        ("geomap_process_image", {}),
+        ("geomap_process_image", {"map_id": "id", "map_uri": "geomap://maps/id"}),
+        ("geomap_georeference", {"crs": "EPSG:4326", "gcps": []}),
+        (
+            "geomap_query_knowledge",
+            {"bounds": {"min_lon": -181, "min_lat": 0, "max_lon": 1, "max_lat": 1}},
+        ),
+        ("geomap_query_knowledge", {}),
+        ("geomap_query_knowledge", {"bounds": None}),
+        ("geomap_query_knowledge", {"legend_labels": []}),
+        ("geomap_query_knowledge", {"query_text": ""}),
+        ("geomap_query_map", {}),
+        ("geomap_query_map", {"metadata": {}}),
+        ("geomap_render_knowledge_overlay", {"georef": {}}),
+        (
+            "geomap_render_knowledge_overlay",
+            {
+                "bundle": {},
+                "georef": {
+                    "crs": "EPSG:4326",
+                    "affine": {"coefficients": [1, 0, 0, 0, 1, 0]},
+                    "bounds": {"min_lon": 0, "min_lat": 0, "max_lon": 1, "max_lat": 1},
+                    "residual": 0,
+                },
+            },
+        ),
+        (
+            "geomap_render_knowledge_overlay",
+            {"bundle": {}, "bundle_uri": "geomap://bundles/id", "georef": {}},
+        ),
+    ],
+)
+def test_tool_schemas_reject_invalid_argument_combinations(tool_name, arguments):
+    tools = {tool["name"]: tool for tool in tool_definitions()}
+
+    with pytest.raises(ValidationError):
+        validate(arguments, tools[tool_name]["inputSchema"])

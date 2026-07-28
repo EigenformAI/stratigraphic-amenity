@@ -1,0 +1,26 @@
+NOTICES
+
+This repository incorporates or interoperates with material listed below and described in the
+code and `assets/manifest.toml`.
+
+1. Microsoft PEACE
+   Source: https://github.com/microsoft/PEACE
+   License: MIT
+   Copyright (c) 2024 Microsoft
+
+2. Ultralytics YOLO
+   Source: PEACE `dependencies/ultralytics`, derived from Ultralytics
+   License: AGPL-3.0
+   Project: https://github.com/ultralytics/ultralytics
+
+3. USGS earthquake history data
+   Source: United States Geological Survey Earthquake Hazards Program
+   License/status: CC0 / United States government public-domain data
+   Project: https://earthquake.usgs.gov/
+
+4. GEM Global Active Faults Database
+   Source: GEM Foundation, https://doi.org/10.5281/zenodo.3376300
+   License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+
+The optional runtime, model, and knowledge assets are downloaded from their attributed upstream
+sources and are not relicensed by Stratigraphic Amenity.

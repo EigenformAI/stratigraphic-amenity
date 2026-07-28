@@ -1,0 +1,68 @@
+manifest_version = 1
+peace_revision = "da994841fc97e5a19e3068a34a86297d17f3f3e2"
+
+[[asset]]
+id = "peace-yolov10-runtime"
+version = "PEACE-da994841fc97e5a19e3068a34a86297d17f3f3e2"
+kind = "python-source"
+urls = ["https://codeload.github.com/microsoft/PEACE/zip/da994841fc97e5a19e3068a34a86297d17f3f3e2"]
+sha256 = ""
+tree_sha256 = "f4b4144bb778543a66dfd86f3ea7b23388a378a02ac708aa91fb0b9b64f21b74"
+max_extracted_bytes = 10000000
+destination = "assets/runtime/ultralytics"
+license = "AGPL-3.0-only"
+source = "https://github.com/microsoft/PEACE/tree/da994841fc97e5a19e3068a34a86297d17f3f3e2/dependencies/ultralytics"
+redistribution = "source-sync"
+required_for = ["geomap_process_image"]
+attribution = "Ultralytics YOLO, AGPL-3.0; PEACE revision da994841."
+archive_subdir = "dependencies/ultralytics"
+post_install = ["__init__.py", "models/yolov10/model.py", "cfg/default.yaml"]
+patches = ["remove-parent-sys-path-hook"]
+
+[[asset]]
+id = "peace-layout-detectors"
+version = "google-drive-1f7dUdfA_W8He9czG6SoYQBmUsSPrA6MZ"
+kind = "model"
+urls = ["https://drive.google.com/uc?id=1f7dUdfA_W8He9czG6SoYQBmUsSPrA6MZ"]
+sha256 = "10701bba7a94f54cbd79cae79ca0a79eba54b82d7e8552e5a78ed5b2dcbb09da"
+size_bytes = 190753184
+max_extracted_bytes = 250000000
+download = "gdown"
+destination = "assets/models"
+license = "MIT"
+source = "https://github.com/microsoft/PEACE#quick-start"
+redistribution = "download-only"
+required_for = ["geomap_process_image"]
+attribution = "PEACE layout detector weights, Microsoft PEACE authors, MIT."
+archive_subdir = "models"
+post_install = ["det_component/weights/best.pt", "det_legend/weights/best.pt"]
+
+[[asset]]
+id = "peace-knowledge-base"
+version = "PEACE-da994841fc97e5a19e3068a34a86297d17f3f3e2"
+kind = "data"
+urls = ["https://codeload.github.com/microsoft/PEACE/zip/da994841fc97e5a19e3068a34a86297d17f3f3e2"]
+sha256 = ""
+tree_sha256 = "3fb1b29206667d94c51a8b1a666557aee4dfe54f7f98aacd81c5106022ac0192"
+max_extracted_bytes = 30000000
+destination = "assets/knowledge"
+license = "MIT AND CC0-1.0 AND CC-BY-SA-4.0"
+license_components = [
+    "K2 material: MIT",
+    "USGS earthquake history: CC0-1.0 / United States government public domain",
+    "GEM Global Active Faults: CC-BY-SA-4.0",
+]
+source = "https://github.com/microsoft/PEACE/tree/da994841fc97e5a19e3068a34a86297d17f3f3e2/dependencies/knowledge"
+redistribution = "source-sync"
+required_for = ["rock_type", "rock_age", "rock_knowledge", "component_usage_knowledge", "downstream_task_knowledge", "earthquake_history", "active_faults"]
+attribution = "PEACE K2 material (MIT); USGS earthquake history (CC0/public domain); GEM Global Active Faults (CC BY-SA 4.0)."
+archive_subdir = "dependencies/knowledge"
+post_install = [
+    "k2_rock_type.json",
+    "k2_rock_age.json",
+    "k2_rock_detail.json",
+    "k2_usage.json",
+    "k2_expertise.json",
+    "earthquake_1970_4.5mag.csv",
+    "gem_active_faults_harmonized.geojson",
+]

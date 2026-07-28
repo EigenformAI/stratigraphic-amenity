@@ -7,7 +7,7 @@ assets; the real end-to-end path is exercised by scripts/demo_georef_knowledge.p
 
 import pytest
 
-from peace_tool_pool.knowledge import Bounds, KnowledgeService
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeService
 
 
 def _service_with_spy():

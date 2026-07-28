@@ -8,9 +8,9 @@ lon/lat and assemble a valid Bounds.
 import pyproj
 import pytest
 
-from peace_tool_pool.georef import GeoReference, GroundControlPoint, fit_affine, georeference_bounds
-from peace_tool_pool.georef.errors import AffineFitError
-from peace_tool_pool.knowledge import Bounds
+from stratigraphic_amenity.georef import GeoReference, GroundControlPoint, fit_affine, georeference_bounds
+from stratigraphic_amenity.georef.errors import AffineFitError
+from stratigraphic_amenity.knowledge import Bounds
 
 
 def _gcp(px, py, wx, wy):

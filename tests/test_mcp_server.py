@@ -3,10 +3,10 @@ import base64
 
 import pytest
 
-from peace_tool_pool.mcp.adapter import GeomapMcpAdapter
-from peace_tool_pool.mcp.errors import McpToolError
-from peace_tool_pool.mcp.resources import ResourceRegistry
-from peace_tool_pool.mcp.server import create_server
+from stratigraphic_amenity.mcp.adapter import GeomapMcpAdapter
+from stratigraphic_amenity.mcp.errors import McpToolError
+from stratigraphic_amenity.mcp.resources import ResourceRegistry
+from stratigraphic_amenity.mcp.server import create_server
 
 
 PNG_1X1 = base64.b64decode(
@@ -21,7 +21,14 @@ class FailingAdapter:
             code="disallowed_path",
             message="Path is outside allowed roots.",
             trace_id="trace-fixture",
+            details={"path_label": "outside-root"},
+            recovery_hints=["Choose a path under GEOMAP_MCP_ALLOWED_ROOTS."],
         )
+
+
+class InvalidOutputAdapter:
+    def list_capabilities(self):
+        return {"content": [], "structuredContent": {"trace_id": "bad-output"}}
 
 
 def _registry(tmp_path, monkeypatch):
@@ -58,7 +65,12 @@ def test_call_tool_preserves_typed_errors_over_server_handler():
 
     assert result["isError"] is True
     assert result["structuredContent"]["error"]["code"] == "disallowed_path"
+    assert result["structuredContent"]["schema_version"] == "geomap-error/v1"
     assert result["structuredContent"]["error"]["trace_id"] == "trace-fixture"
+    assert result["structuredContent"]["error"]["details"] == {"path_label": "outside-root"}
+    assert result["structuredContent"]["error"]["recovery_hints"] == [
+        "Choose a path under GEOMAP_MCP_ALLOWED_ROOTS."
+    ]
     assert result["structuredContent"]["code"] == "disallowed_path"
 
 
@@ -82,6 +94,17 @@ def test_unknown_tool_is_structured_error():
     assert result["isError"] is True
     assert result["structuredContent"]["error"]["code"] == "unknown_tool"
     assert result["structuredContent"]["error"]["trace_id"]
+
+
+def test_invalid_adapter_output_is_a_typed_error():
+    pytest.importorskip("mcp.types")
+    server = create_server(adapter=InvalidOutputAdapter())
+
+    result = _dispatch(server, "geomap_list_capabilities", {})
+
+    assert result["isError"] is True
+    assert result["structuredContent"]["error"]["code"] == "invalid_output"
+    assert result["structuredContent"]["error"]["trace_id"] == "bad-output"
 
 
 def test_registry_error_through_handler_carries_trace_id(tmp_path, monkeypatch):
@@ -108,3 +131,18 @@ def test_adapter_stamps_method_trace_on_registry_error(tmp_path, monkeypatch):
 
     assert exc_info.value.code == "artifact_not_found"
     assert exc_info.value.trace_id is not None
+
+
+def test_tool_diagnostics_are_redacted_and_written_to_stderr(monkeypatch, capsys):
+    pytest.importorskip("mcp.types")
+    monkeypatch.setenv("GEOMAP_LOG_LEVEL", "INFO")
+    server = create_server(adapter=FailingAdapter())
+
+    _dispatch(server, "geomap_list_capabilities", {})
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "tool=geomap_list_capabilities" in captured.err
+    assert "outcome=disallowed_path" in captured.err
+    assert "trace_id=trace-fixture" in captured.err
+    assert "Path is outside" not in captured.err

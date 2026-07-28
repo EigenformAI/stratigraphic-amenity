@@ -7,8 +7,8 @@ strings into a canonical "EPSG:<code>".
 
 import pytest
 
-from peace_tool_pool.georef import resolve_crs
-from peace_tool_pool.georef.errors import CRSResolutionError
+from stratigraphic_amenity.georef import resolve_crs
+from stratigraphic_amenity.georef.errors import CRSResolutionError
 
 
 def test_resolve_crs_from_epsg_int():

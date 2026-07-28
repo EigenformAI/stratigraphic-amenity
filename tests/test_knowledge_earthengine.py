@@ -1,5 +1,5 @@
-from peace_tool_pool.knowledge import Bounds, KnowledgeRequest
-from peace_tool_pool.knowledge.providers.earthengine import (
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeRequest
+from stratigraphic_amenity.knowledge.providers.earthengine import (
     EarthEngineLandcoverProvider,
     EarthEnginePopulationDensityProvider,
 )

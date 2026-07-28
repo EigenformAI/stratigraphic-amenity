@@ -1,7 +1,7 @@
 import pytest
 
-from peace_tool_pool.map_processing import image_ops
-from peace_tool_pool.map_processing.types import Detection, LegendEntry
+from stratigraphic_amenity.map_processing import image_ops
+from stratigraphic_amenity.map_processing.types import Detection, LegendEntry
 
 cv2 = pytest.importorskip("cv2")
 np = pytest.importorskip("numpy")

@@ -3,14 +3,32 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "peace-tool-pool"
-version = "0.0.0"
-description = "Portable extraction scaffold for the PEACE GeoMap-Agent tool pool."
+name = "stratigraphic-amenity"
+version = "0.1.0"
+description = "Composable geologic-map processing, georeferencing, knowledge, and MCP services."
 readme = "README.md"
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.11,<3.12"
+license = "MIT"
+maintainers = [{ name = "Stratigraphic Amenity maintainers" }]
+keywords = ["geology", "geologic-maps", "georeferencing", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: GIS",
+]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/EigenformAI/stratigraphic-amenity"
+Documentation = "https://github.com/EigenformAI/stratigraphic-amenity/tree/main/docs"
+Issues = "https://github.com/EigenformAI/stratigraphic-amenity/issues"
+
 [project.optional-dependencies]
+assets = [
+    "gdown>=5,<6",
+]
 detectors = [
     "huggingface-hub>=0.24,<1",
     "matplotlib==3.9.2",
@@ -47,12 +65,14 @@ geo = [
     "pyproj>=3.4,<4",
 ]
 mcp = [
+    "jsonschema>=4.23,<5",
     "mcp>=1.12,<2",
     "pillow==11.0.0",
 ]
 
 [project.scripts]
-peace-tool-pool-mcp = "peace_tool_pool.mcp.server:main"
+stratigraphic-amenity-assets = "stratigraphic_amenity.asset_installer:main"
+stratigraphic-amenity-mcp = "stratigraphic_amenity.mcp.server:main"
 
 [dependency-groups]
 dev = [
@@ -61,14 +81,41 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/peace_tool_pool"]
+packages = ["src/stratigraphic_amenity"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"assets/manifest.toml" = "stratigraphic_amenity/data/manifest.toml"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/assets",
+    "/docs",
+    "/examples",
+    "/scripts/install_assets.py",
+    "/.env.example",
+    "/.envrc.example",
+    "/AGENTS.md",
+    "/CHANGELOG.md",
+    "/CITATION.cff",
+    "/CODE_OF_CONDUCT.md",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+    "/NOTICE",
+    "/README.md",
+    "/SECURITY.md",
+    "/SUPPORT.md",
+    "/pyproject.toml",
+]
+exclude = ["/docs/design", "/docs/benchmarks", "/scripts/benchmarks", "/runs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.uv]
 package = true

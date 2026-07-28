@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from peace_tool_pool.map_processing.config import MapProcessingConfig
-from peace_tool_pool.map_processing.service import MapProcessingService
-from peace_tool_pool.map_processing.types import Detection
-from peace_tool_pool.mcp.adapter import GeomapMcpAdapter
-from peace_tool_pool.mcp.resources import ResourceRegistry
+from stratigraphic_amenity.map_processing.config import MapProcessingConfig
+from stratigraphic_amenity.map_processing.service import MapProcessingService
+from stratigraphic_amenity.map_processing.types import Detection
+from stratigraphic_amenity.mcp.adapter import GeomapMcpAdapter
+from stratigraphic_amenity.mcp.resources import ResourceRegistry
 
 cv2 = pytest.importorskip("cv2")
 np = pytest.importorskip("numpy")

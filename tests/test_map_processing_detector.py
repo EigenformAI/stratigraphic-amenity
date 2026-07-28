@@ -9,9 +9,10 @@ adapter then preserves.
 import numpy as np
 import pytest
 
-from peace_tool_pool.map_processing.detectors.peace_yolov10 import (
+from stratigraphic_amenity.map_processing.detectors.peace_yolov10 import (
     COMPONENT_CLASS_NAMES,
     _YoloV10Detector,
+    _load_yolov10_class,
     normalize_yolov10_result,
 )
 
@@ -67,3 +68,22 @@ def test_detect_disables_save_paths_so_results_carry_confidence():
     assert model.kwargs.get("verbose") is False
     # And confidence survives end-to-end.
     assert out["main_map"][0].confidence == pytest.approx(0.9)
+
+
+def test_load_yolov10_class_from_managed_runtime_without_sys_path_mutation(tmp_path):
+    import sys
+
+    runtime = tmp_path / "ultralytics"
+    runtime.mkdir()
+    (runtime / "__init__.py").write_text("class YOLOv10: pass\n", encoding="utf-8")
+    original_path = list(sys.path)
+    existing = sys.modules.pop("ultralytics", None)
+    try:
+        loaded = _load_yolov10_class(runtime)
+    finally:
+        sys.modules.pop("ultralytics", None)
+        if existing is not None:
+            sys.modules["ultralytics"] = existing
+
+    assert loaded.__name__ == "YOLOv10"
+    assert sys.path == original_path

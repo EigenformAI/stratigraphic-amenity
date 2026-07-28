@@ -1,0 +1,2 @@
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+dotenv_if_exists .env

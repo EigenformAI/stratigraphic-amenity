@@ -1,6 +1,6 @@
 import pytest
 
-from peace_tool_pool.knowledge import (
+from stratigraphic_amenity.knowledge import (
     Bounds,
     KnowledgeBundle,
     KnowledgeItem,
@@ -9,8 +9,8 @@ from peace_tool_pool.knowledge import (
     KNOWLEDGE_BUNDLE_SCHEMA,
     SCHEMA_VERSION,
 )
-from peace_tool_pool.knowledge.bounds import split_antimeridian
-from peace_tool_pool.knowledge.errors import InvalidBoundsError
+from stratigraphic_amenity.knowledge.bounds import split_antimeridian
+from stratigraphic_amenity.knowledge.errors import InvalidBoundsError
 
 
 def test_bounds_validation_normalizes_crs_and_serializes():

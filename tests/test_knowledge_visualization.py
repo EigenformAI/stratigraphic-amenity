@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from peace_tool_pool.knowledge import Bounds, KnowledgeBundle, KnowledgeItem
-from peace_tool_pool.knowledge.visualization import (
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeBundle, KnowledgeItem
+from stratigraphic_amenity.knowledge.visualization import (
     KNOWLEDGE_OVERLAY_COLORS_RGB,
     extract_knowledge_overlay,
     render_knowledge_overlay_on_image,

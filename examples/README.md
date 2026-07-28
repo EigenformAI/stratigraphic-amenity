@@ -1,48 +1,23 @@
-# Examples — standard entry points
+# Examples
 
-Runnable, minimal demonstrations of the tool pool, each importing the real APIs.
-These are the place to start if you want to see how to *use* the tools. (Internal
-quality benchmarks and evals live separately under [`scripts/benchmarks/`](../scripts/benchmarks/).)
+Every example accepts an explicit user-supplied map path. No map, model, or private checkout is
+bundled. Run `python examples/<name>.py --help` for the complete argument contract.
 
-All examples operate on the bundled maps in `data/test-inputs/` via a single
-registry — `peace_tool_pool.examples.maps` — which is the one source of truth for
-each map's georeferencing (CRS, ground control points, neat-line extent).
+- `01_process_map.py` demonstrates HIE after installing the `detectors` extra plus
+  `peace-yolov10-runtime` and `peace-layout-detectors` assets.
+- `02_georeference_map.py` is asset-free and takes a CRS, at least two GCPs, and a pixel extent.
+- `03_knowledge_overlay_on_map.py` is offline by default with `--bundle PATH`. Network providers
+  are called only with `--live`; their responses and availability are mutable.
 
-| # | Example | What it shows | Extras |
-| - | --- | --- | --- |
-| 1 | `01_process_map.py` | CV pipeline: detect components + legend on a map image | `detectors` |
-| 2 | `02_georeference_map.py` | Fit GCPs → EPSG:4326 bounds; pixel↔lon/lat round-trip | `geo` |
-| 3 | `03_knowledge_overlay_on_map.py` | Georef → query knowledge → annotate the map raster | `geo knowledge-local knowledge-network detectors` |
-
-Run with `uv run --extra <...> python examples/<file>.py [--map <key>]`, e.g.:
+Example:
 
 ```bash
-uv run --extra geo --extra knowledge-local --extra knowledge-network --extra detectors \
-    python examples/03_knowledge_overlay_on_map.py --map huronian
+uv run --extra geo python examples/02_georeference_map.py map.png \
+  --crs EPSG:26915 \
+  --gcp 0 0 660000 5400000 \
+  --gcp 1000 1000 690000 5370000 \
+  --pixel-extent 0 0 1000 1000
 ```
 
-## The test-input maps
-
-| key | scale | knowledge target? | notes |
-| --- | --- | --- | --- |
-| `osmani` | regional (1:100k, UTM 15N) | yes | Shebandowan belt; ~86 mineral occurrences |
-| `huronian` | regional (1:100k, UTM 15N) | yes | Shebandowan/Quetico; 43 mineral occurrences |
-| `harfang` | **channel (~40 m, UTM 18N)** | **no** | James Bay, QC; regional knowledge returns 0 at this footprint |
-
-`harfang` is georeferenceable (use it with example 2), but a regional knowledge
-overlay is **not** meaningful at a ~40 m channel exposure — example 3 only offers
-the regional maps.
-
-## Where the GCPs come from
-
-A VLM is not wired up yet, so the ground control points were read by hand off each
-map's printed UTM graticule (the regional grids were pinned computationally by
-detecting the tick marks in the white margin just outside the neat-line). They
-live in `src/peace_tool_pool/examples/maps.py`; swap in your own map there to run
-the examples on it.
-
-## Prerequisites
-
-- Example 1 needs the YOLO weights — see `scripts/install_peace_ultralytics.sh`.
-- Example 3 makes live calls to OGS MDI / SIGÉOM (the `knowledge-network` extra);
-  results are cached under `.cache/knowledge/` so re-runs of the same map are offline.
+Map labels, CRS text, and control points must come from the operator or client VLM. The examples
+do not include OCR, a VLM, or final PEQA answer generation.

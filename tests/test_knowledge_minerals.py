@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import pytest
 
-from peace_tool_pool.knowledge import Bounds, KnowledgeRequest, KnowledgeService
-from peace_tool_pool.knowledge.errors import OptionalDependencyError, ProviderOptionError
-from peace_tool_pool.knowledge.providers.minerals import MineralOccurrenceProvider, MineralSourceBinding
-from peace_tool_pool.knowledge.sources import ogs_minerals
-from peace_tool_pool.knowledge.sources.ogs_minerals import (
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeRequest, KnowledgeService
+from stratigraphic_amenity.knowledge.errors import OptionalDependencyError, ProviderOptionError
+from stratigraphic_amenity.knowledge.providers.minerals import MineralOccurrenceProvider, MineralSourceBinding
+from stratigraphic_amenity.knowledge.sources import ogs_minerals
+from stratigraphic_amenity.knowledge.sources.ogs_minerals import (
     OgsMineralOccurrenceAdapter,
     normalize_features,
 )
-from peace_tool_pool.knowledge.sources.sigeom_minerals import (
+from stratigraphic_amenity.knowledge.sources.sigeom_minerals import (
     SigeomMineralOccurrenceAdapter,
     normalize_sigeom_features,
 )

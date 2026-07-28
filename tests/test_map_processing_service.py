@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from peace_tool_pool.map_processing.config import MapProcessingConfig
-from peace_tool_pool.map_processing.service import MapProcessingService
-from peace_tool_pool.map_processing.types import Detection
+from stratigraphic_amenity.map_processing.config import MapProcessingConfig
+from stratigraphic_amenity.map_processing.service import MapProcessingService
+from stratigraphic_amenity.map_processing.types import Detection
 
 cv2 = pytest.importorskip("cv2")
 np = pytest.importorskip("numpy")

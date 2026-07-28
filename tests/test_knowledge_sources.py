@@ -3,26 +3,26 @@ from pathlib import Path
 
 import pytest
 
-from peace_tool_pool.knowledge import Bounds, KnowledgeConfig
-from peace_tool_pool.knowledge.errors import (
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeConfig
+from stratigraphic_amenity.knowledge.errors import (
     OptionalDependencyError,
     SourceRegistryError,
     SourceManifestError,
     SourceQueryError,
 )
-from peace_tool_pool.knowledge.sources.diss_faults import DissSeismogenicSourceAdapter
-from peace_tool_pool.knowledge.sources.sigeom_minerals import (
+from stratigraphic_amenity.knowledge.sources.diss_faults import DissSeismogenicSourceAdapter
+from stratigraphic_amenity.knowledge.sources.sigeom_minerals import (
     SigeomMineralOccurrenceAdapter,
     normalize_sigeom_features,
 )
-from peace_tool_pool.knowledge.sources.gem_faults import (
+from stratigraphic_amenity.knowledge.sources.gem_faults import (
     GEM_GAP_BBOXES,
     GemActiveFaultSourceAdapter,
     coverage_caveats_for_bounds,
 )
-from peace_tool_pool.knowledge.sources.manifest import SourceManifest, find_latest_manifest
-from peace_tool_pool.knowledge.sources.registry import SourceRegistry, default_source_registry
-from peace_tool_pool.knowledge.sources.usgs_events import (
+from stratigraphic_amenity.knowledge.sources.manifest import SourceManifest, find_latest_manifest
+from stratigraphic_amenity.knowledge.sources.registry import SourceRegistry, default_source_registry
+from stratigraphic_amenity.knowledge.sources.usgs_events import (
     EMSC_DEFAULT_PROFILE,
     EMSC_EVENT_BASE_URL,
     FdsnEventSourceAdapter,
@@ -295,7 +295,7 @@ def test_usgs_chunking_raises_when_subday_window_still_overflows():
 
 def test_usgs_fetch_requires_knowledge_network_extra(monkeypatch):
     adapter = UsgsFdsnEventAdapter(client=None)
-    monkeypatch.setattr("peace_tool_pool.knowledge.sources.usgs_events._httpx_module", lambda: None)
+    monkeypatch.setattr("stratigraphic_amenity.knowledge.sources.usgs_events._httpx_module", lambda: None)
 
     with pytest.raises(OptionalDependencyError):
         adapter.count({})
