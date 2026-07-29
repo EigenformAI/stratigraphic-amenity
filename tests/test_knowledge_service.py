@@ -137,6 +137,38 @@ def test_service_include_exclude_aliases_and_unknown_warning(tmp_path):
         service.query_bounds(bounds, include=("unknown_provider",))
 
 
+def test_unresolved_include_filter_names_the_token_and_the_registered_providers(tmp_path):
+    """An agent that guesses a provider name must learn that it guessed, and the real names."""
+
+    service = KnowledgeService(config=fixture_config(tmp_path))
+    bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
+
+    with pytest.raises(ProviderError) as excinfo:
+        service.query_bounds(bounds, include=("earthquakes", "faults"))
+
+    message = str(excinfo.value)
+    assert "earthquakes" in message and "faults" in message
+    assert "earthquake_history" in message and "active_faults" in message
+
+
+def test_matched_but_unusable_provider_reports_why_not_a_name_error(tmp_path):
+    """A real provider that cannot serve the request must not look like a typo."""
+
+    service = KnowledgeService(config=fixture_config(tmp_path))
+    bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
+    registration = next(
+        item for item in service._registrations if item.id == "earthquake_history"
+    )
+    object.__setattr__(registration, "supports", lambda _request: False)
+
+    with pytest.raises(ProviderError) as excinfo:
+        service.query_bounds(bounds, include=("earthquake_history",))
+
+    message = str(excinfo.value)
+    assert "did not resolve" not in message
+    assert "earthquake_history" in message
+
+
 def test_provider_options_validate_before_dispatch_and_affect_cache_key(tmp_path):
     service = KnowledgeService(config=fixture_config(tmp_path))
     bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)

@@ -3,6 +3,8 @@
 `KnowledgeService` registers ten providers lazily. Registration means a provider is known; it
 does not mean dependencies, assets, credentials, network access, or geographic coverage are
 available. Call `geomap_list_capabilities`, then inspect every query's warnings and provenance.
+When a listed provider lacks `peace-knowledge-base`, `geomap_prepare_knowledge` is the MCP-reachable
+remedy when exposed; it does not install optional dependencies or guarantee geographic coverage.
 
 ## Provider Matrix
 

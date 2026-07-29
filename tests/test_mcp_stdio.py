@@ -47,8 +47,9 @@ def test_real_stdio_asset_free_workflow(tmp_path):
                 await session.initialize()
                 tools = await session.list_tools()
                 names = {tool.name for tool in tools.tools}
-                assert len(tools.tools) == 9
+                assert len(tools.tools) == 10
                 assert "geomap_prepare_detectors" in names
+                assert "geomap_prepare_knowledge" in names
 
                 registered = await session.call_tool("geomap_register_map", {"path": str(image)})
                 assert not registered.isError

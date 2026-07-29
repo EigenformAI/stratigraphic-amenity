@@ -7,7 +7,8 @@ evidence; it does not read text, decide which evidence is true, or produce the f
 
 1. Call `geomap_list_capabilities` before selecting a workflow.
 2. Distinguish `registered`, `installed`, `configured`, and `ready`. A registered provider may
-   still lack a usable local mirror or source coverage.
+   still lack a usable local mirror or source coverage. Match the intended input to the provider's
+   `supported_requests` before querying; readiness alone does not mean it accepts every request.
 3. Register only an existing user-supplied image that is visible to the local server and inside
    an allowed root.
 4. Call `geomap_process_image` only when `map_processing.ready` is true. If false, the normal
@@ -25,8 +26,11 @@ evidence; it does not read text, decide which evidence is true, or produce the f
 7. Prefer at least three non-collinear GCPs; inspect affine residual in map CRS units.
 8. Treat `warnings`, `record_count`, `truncated`, and each item's `provenance` as evidence.
 9. An empty result with a warning is not evidence of geological absence.
-10. Read only resource URIs relevant to the question. Do not ask for or expose local paths.
-11. Construct the final response in the client; there is no OCR, VLM, or PEQA tool.
+10. If a required knowledge provider lacks `peace-knowledge-base`, request confirmation and call
+    `geomap_prepare_knowledge`. If the tool is absent, report the requirement to the operator;
+    never run the asset installer from the client's shell.
+11. Read only resource URIs relevant to the question. Do not ask for or expose local paths.
+12. Construct the final response in the client; there is no OCR, VLM, or PEQA tool.
 
 ## Full Map Workflow
 
@@ -36,6 +40,7 @@ runtime and weights. Otherwise skip processing and supply GCPs, extent, bounds, 
 ```text
 geomap_list_capabilities
   -> geomap_prepare_detectors() with confirmation when map_processing is not ready
+  -> geomap_prepare_knowledge() with confirmation when selected providers need its asset
   -> geomap_register_map(path)
   -> geomap_process_image(map_id) when ready
   -> client reads CRS, labels, and GCPs
@@ -135,7 +140,7 @@ a general affine and produce an RMS residual.
 ## Legend-Only Workflow
 
 `geomap_enrich_legend` selects `rock_type` and `rock_age`. Both require the K2 JSON files installed
-by `stratigraphic-amenity-assets peace-knowledge-base`. Do not call it while either provider is
+by `geomap_prepare_knowledge` or by the server operator. Do not call it while either provider is
 unready or infer lithology or age from an unavailable result.
 
 ## Resource Handling
@@ -169,7 +174,10 @@ when reporting a failure.
 | `registry_corrupt` | Back up and remove the invalid registry under the configured cache root, restart, and re-register maps. |
 | `unsupported_media` | Use a supported map image or the required JSON bundle resource. |
 | `oversize_image` | Use an operator-approved smaller file; do not bypass server limits. |
-| `missing_extra` | Read `details.missing_requirements` for the full list, then follow `recovery_hints`: call `geomap_prepare_detectors` with user confirmation when it is offered, otherwise report the requirements to the operator. Do not run the quoted installer commands yourself; your shell is not the server's environment. |
+| `missing_extra` | Read `details.missing_requirements` for the full list, then follow `recovery_hints`: call the offered preparation tool with user confirmation, otherwise report the requirements to the operator. Do not run installer commands yourself; your shell is not the server's environment. |
+| `preparation_disabled` | Report that the server operator withheld the requested preparation tool; do not substitute a client-shell install. |
+| `detector_configuration_mismatch` / `knowledge_configuration_mismatch` | Ask the server operator to restore the standard manifest destinations or provision the configured custom paths manually. |
+| `asset_install_failed` | Stop and report the trace ID to the server operator. Do not bypass the manifest installer or retry repeatedly. |
 | `invalid_bounds` | Correct CRS, GCPs, pixel extent, coordinate ranges, or degeneracy. |
 | `georef_required` | Supply inline bounds/georef or create stored georef state. |
 | `unknown_provider` | Correct provider IDs/options and consult capability output. |

@@ -21,6 +21,7 @@ def test_capabilities_separate_registration_from_readiness(tmp_path, monkeypatch
                 id="fixture_provider",
                 name="Fixture provider",
                 output_keys=("fixture",),
+                supported_requests=("bounds",),
                 default_enabled=True,
             )
         ]
@@ -52,6 +53,45 @@ def test_capabilities_separate_registration_from_readiness(tmp_path, monkeypatch
     assert result["capabilities"]["map_processing"]["missing_requirements"]
     assert result["providers"][0]["registered"] is True
     assert "ready" in result["providers"][0]
+    assert result["providers"][0]["supported_requests"] == ["bounds"]
+    assert result["capabilities"]["knowledge_query"]["ready_provider_count"] == 1
+    assert result["capabilities"]["knowledge_query"]["registered_provider_count"] == 1
+
+
+def test_default_provider_capabilities_advertise_request_shapes(tmp_path, monkeypatch):
+    from stratigraphic_amenity.knowledge import KnowledgeConfig, KnowledgeService
+
+    config = KnowledgeConfig(
+        data_root=tmp_path / "data",
+        knowledge_root=tmp_path / "knowledge",
+        cache_root=tmp_path / "cache",
+    )
+    service = KnowledgeService(config=config)
+    adapter = GeomapMcpAdapter(
+        registry=ResourceRegistry.from_env(base_dir=tmp_path),
+        knowledge_service_factory=lambda: service,
+    )
+
+    providers = {
+        item["id"]: item for item in adapter.list_capabilities()["structuredContent"]["providers"]
+    }
+
+    for provider_id in ("rock_type", "rock_age"):
+        assert providers[provider_id]["supported_requests"] == ["legend_labels"]
+    for provider_id in (
+        "earthquake_history",
+        "active_faults",
+        "mineral_occurrences",
+        "landcover_distribution",
+        "population_density",
+    ):
+        assert providers[provider_id]["supported_requests"] == ["bounds"]
+    for provider_id in (
+        "rock_knowledge",
+        "component_usage_knowledge",
+        "downstream_task_knowledge",
+    ):
+        assert providers[provider_id]["supported_requests"] == ["query_text"]
 
 
 def test_unrelated_ultralytics_install_cannot_replace_managed_runtime(tmp_path, monkeypatch):
@@ -181,4 +221,49 @@ def test_detector_preparation_capability_is_registered_by_default(tmp_path, monk
     assert any(
         "GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION" in item
         for item in disabled["detector_preparation"]["missing_requirements"]
+    )
+
+
+def test_knowledge_preparation_capability_and_provider_remedy(tmp_path, monkeypatch):
+    data_root = tmp_path / "data"
+    cache_root = tmp_path / "cache"
+    data_root.mkdir()
+    cache_root.mkdir()
+    monkeypatch.setenv("GEOMAP_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("GEOMAP_CACHE_ROOT", str(cache_root))
+    monkeypatch.setenv("GEOMAP_MCP_ALLOWED_ROOTS", f"{data_root}:{cache_root}")
+    monkeypatch.delenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", raising=False)
+    service = SimpleNamespace(
+        config=SimpleNamespace(
+            data_root=data_root,
+            knowledge_root=data_root / "assets" / "knowledge",
+            resolved_k2_rock_type_path=data_root / "assets" / "knowledge" / "k2_rock_type.json",
+        ),
+        _registrations=[
+            SimpleNamespace(
+                id="rock_type",
+                name="Rock type",
+                output_keys=("rock_type",),
+                default_enabled=True,
+            )
+        ],
+    )
+    adapter = GeomapMcpAdapter(
+        registry=ResourceRegistry.from_env(base_dir=tmp_path),
+        knowledge_service_factory=lambda: service,
+    )
+
+    enabled = adapter.list_capabilities()["structuredContent"]
+    monkeypatch.setenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", "false")
+    disabled = adapter.list_capabilities()["structuredContent"]
+
+    assert enabled["capabilities"]["knowledge_preparation"]["registered"] is True
+    assert any(
+        "geomap_prepare_knowledge" in item
+        for item in enabled["providers"][0]["missing_requirements"]
+    )
+    assert disabled["capabilities"]["knowledge_preparation"]["registered"] is False
+    assert any(
+        "server operator" in item
+        for item in disabled["providers"][0]["missing_requirements"]
     )

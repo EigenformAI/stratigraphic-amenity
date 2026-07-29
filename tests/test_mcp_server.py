@@ -167,6 +167,20 @@ def test_prepare_detectors_tool_is_exposed_by_default(monkeypatch):
     assert _dispatch(disabled, "geomap_prepare_detectors", {})["structuredContent"]["code"] == "unknown_tool"
 
 
+def test_prepare_knowledge_tool_is_exposed_by_default(monkeypatch):
+    pytest.importorskip("mcp.types")
+
+    monkeypatch.delenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", raising=False)
+    enabled = create_server(adapter=FailingAdapter())
+    result = _dispatch(enabled, "geomap_prepare_knowledge", {})
+    assert result["structuredContent"]["code"] != "unknown_tool"
+
+    monkeypatch.setenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", "false")
+    disabled = create_server(adapter=FailingAdapter())
+    result = _dispatch(disabled, "geomap_prepare_knowledge", {})
+    assert result["structuredContent"]["code"] == "unknown_tool"
+
+
 def test_process_image_preserves_missing_module_cause():
     class Registry:
         def map_public(self, map_id):

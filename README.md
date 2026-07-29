@@ -22,7 +22,7 @@ Version 0.1.0 provides:
 - local-mirror and explicit live knowledge-provider interfaces;
 - structured warnings, counts, provenance, and persistent knowledge bundles;
 - standalone SVG and optional map-annotated PNG overlays;
-- nine MCP tools, including detector provisioning, and resource reads over local stdio.
+- ten MCP tools, including detector and knowledge provisioning, and resource reads over local stdio.
 
 Version 0.1.0 does **not** bundle a map or optional PEACE assets in the Python distributions.
 The attributed asset installer source-syncs the PEACE YOLOv10 runtime and knowledge base from a
@@ -121,6 +121,10 @@ environment. It installs only the two manifest-pinned, digest-verified detector 
 `GEOMAP_DATA_ROOT`, and accepts no URLs, asset IDs, roots, or force flag. Clients should obtain
 user confirmation before invoking its network downloads and disk writes. Operators who need to
 withhold it can set `GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION=false`.
+
+`geomap_prepare_knowledge` applies the same fixed-policy model to `peace-knowledge-base`. It
+accepts no inputs, reports fresh per-provider readiness after installation, and can be withheld
+independently with `GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION=false`.
 
 ## Workflow
 

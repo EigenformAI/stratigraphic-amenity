@@ -101,6 +101,10 @@ The three manifest entries are approved attribution/download paths:
 - `peace-knowledge-base`: source-sync K2 (MIT), USGS earthquake data (CC0/public domain), and GEM
   active-fault data (CC BY-SA 4.0).
 
+From an MCP client, use `geomap_prepare_detectors` or `geomap_prepare_knowledge` after user
+confirmation rather than running this CLI in the client's environment. Both tools have fixed
+manifest allowlists and can be disabled independently by the server operator.
+
 Install all assets into `GEOMAP_DATA_ROOT`, falling back to the XDG data root:
 
 ```bash

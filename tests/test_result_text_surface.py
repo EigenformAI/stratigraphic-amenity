@@ -17,6 +17,12 @@ def _caps(*, processing_ready: bool, missing: int = 0, preparation: bool = True)
         },
         "detector_preparation": {"ready": preparation, "missing_requirements": []},
         "georeferencing": {"ready": True, "missing_requirements": []},
+        "knowledge_query": {
+            "ready": True,
+            "missing_requirements": [],
+            "ready_provider_count": 1,
+            "registered_provider_count": 2,
+        },
     }
 
 
@@ -49,10 +55,14 @@ def test_capabilities_summary_confirms_readiness_when_nothing_is_missing():
     assert "ready" in summary.lower()
 
 
-def test_capabilities_summary_still_reports_provider_count():
-    assert "2 knowledge provider" in _capabilities_summary(
+def test_capabilities_summary_reports_ready_and_registered_provider_counts():
+    summary = _capabilities_summary(
         _caps(processing_ready=True), provider_count=2
     )
+
+    assert "1 of 2 knowledge provider" in summary
+    assert "All capabilities are ready" not in summary
+    assert "partial" in summary.lower()
 
 
 def _structured(*, labels: list[str | None], width: int = 1600, height: int = 1946):

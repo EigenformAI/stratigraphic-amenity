@@ -15,7 +15,11 @@ import traceback
 from typing import Any, Mapping
 
 from .. import __version__
-from .adapter import GeomapMcpAdapter, detector_preparation_enabled
+from .adapter import (
+    GeomapMcpAdapter,
+    detector_preparation_enabled,
+    knowledge_preparation_enabled,
+)
 from .errors import McpToolError
 from .schemas import new_trace_id, tool_definitions
 
@@ -47,7 +51,14 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
     definitions = {
         definition["name"]: definition
         for definition in tool_definitions()
-        if definition["name"] != "geomap_prepare_detectors" or detector_preparation_enabled()
+        if (
+            definition["name"] != "geomap_prepare_detectors"
+            or detector_preparation_enabled()
+        )
+        and (
+            definition["name"] != "geomap_prepare_knowledge"
+            or knowledge_preparation_enabled()
+        )
     }
 
     @server.list_tools()
@@ -249,6 +260,8 @@ def _call_adapter(adapter: GeomapMcpAdapter, name: str, arguments: Mapping[str, 
         return adapter.process_image(map_id=args.get("map_id"), map_uri=args.get("map_uri"))
     if name == "geomap_prepare_detectors":
         return adapter.prepare_detectors()
+    if name == "geomap_prepare_knowledge":
+        return adapter.prepare_knowledge()
     if name == "geomap_georeference":
         return adapter.georeference(
             crs=args["crs"],

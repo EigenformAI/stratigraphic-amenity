@@ -78,6 +78,7 @@ def test_tool_definitions_expose_stable_names_and_annotations():
         "geomap_register_map",
         "geomap_process_image",
         "geomap_prepare_detectors",
+        "geomap_prepare_knowledge",
         "geomap_georeference",
         "geomap_query_knowledge",
         "geomap_query_map",
@@ -92,6 +93,12 @@ def test_tool_definitions_expose_stable_names_and_annotations():
         "destructiveHint": False,
         "idempotentHint": True,
     }
+    assert tools["geomap_prepare_knowledge"]["annotations"] == {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
+    assert tools["geomap_prepare_knowledge"]["inputSchema"]["properties"] == {}
     assert tools["geomap_register_map"]["annotations"]["readOnlyHint"] is False
     assert tools["geomap_query_knowledge"]["annotations"]["idempotentHint"] is False
     assert tools["geomap_query_map"]["annotations"]["idempotentHint"] is False

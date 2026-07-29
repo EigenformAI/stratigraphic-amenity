@@ -1,7 +1,7 @@
 # MCP Reference
 
-Stratigraphic Amenity 0.1.0 exposes eight tools by default, an optional ninth provisioning tool,
-and resource reads through the local stdio
+Stratigraphic Amenity 0.1.0 exposes ten tools by default, including two independently
+operator-disableable provisioning tools, and resource reads through the local stdio
 transport. The server name is `stratigraphic-amenity`; the executable is
 `stratigraphic-amenity-mcp`. It does not expose HTTP, prompts, `resources/list`, or resource
 templates.
@@ -61,7 +61,10 @@ Inputs: none.
 Returns schema versions, installed-module probes, detector files/runtime status, capability
 readiness, ten provider registrations, redacted allowed-root labels, and byte limits. Each
 capability/provider has `registered`, `installed`, `configured`, `ready`, and
-`missing_requirements`.
+`missing_requirements`. Provider records also include `supported_requests`, whose values are
+`bounds`, `legend_labels`, or `query_text`. The aggregate `knowledge_query` capability reports
+`ready_provider_count` and `registered_provider_count`; its `ready` field means at least one
+provider can serve a supported request, not that every provider is ready.
 
 Readiness is a prerequisite signal, not a coverage guarantee. In particular, earthquake and
 active-fault provider readiness does not verify that a local mirror file exists. Query and
@@ -83,6 +86,20 @@ Returns redacted per-asset status, `performs_network_access: true` (a side-effec
 a connectivity probe), and a fresh `map_processing` readiness report. The operation can
 download about 200 MiB and use substantially more disk during extraction. It cannot install Python
 or system packages. Annotations: state-changing, non-destructive, idempotent.
+
+### `geomap_prepare_knowledge`
+
+Inputs: none. This tool is exposed by default; an operator may withhold it with
+`GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION=false`. It requires the `assets` extra and installs
+exactly `peace-knowledge-base` from `assets/manifest.toml` into the standard
+`GEOMAP_DATA_ROOT/assets/knowledge` destination. Callers cannot supply URLs, asset IDs, roots, or
+a force flag. Custom knowledge paths are rejected.
+
+Returns redacted per-asset status, `performs_network_access: true`, and fresh readiness for every
+registered provider. Its text result names ready and still-unavailable providers and recommends
+retrying earlier requests to providers that are now ready. Installing the asset does not install optional Python packages, configure
+credentials, sync source mirrors, or guarantee source coverage. Annotations: state-changing,
+non-destructive, idempotent.
 
 ### `geomap_register_map`
 
@@ -173,6 +190,8 @@ Returns a `knowledge/v2` bundle plus `bundle_uri`, `record_counts`,
 `total_records_found`, `total_records_returned`, and `truncated`. Each item contains provider,
 value, summary, source, `record_count`, truncation, and provenance. Writes provider cache entries
 when enabled and always writes a new bundle resource.
+The primary text summary repeats every bundle warning after path redaction so text-only MCP hosts
+do not turn warning evidence into a count.
 
 Annotations: state-changing, non-idempotent.
 

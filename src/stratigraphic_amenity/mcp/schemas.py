@@ -213,7 +213,7 @@ def tool_definitions() -> list[dict[str, Any]]:
     return [
         _tool(
             "geomap_list_capabilities",
-            "Discover registered, installed, configured, and ready capabilities. Call this first; inspect missing_requirements before selecting a workflow.",
+            "Discover registered, installed, configured, and ready capabilities. Call this first; inspect provider readiness, supported_requests, and missing_requirements before selecting a workflow.",
             {},
             read_only=True,
             idempotent=True,
@@ -237,6 +237,13 @@ def tool_definitions() -> list[dict[str, Any]]:
         _tool(
             "geomap_prepare_detectors",
             "Download and install only the manifest-approved PEACE runtime and detector weights into the server data root. Performs network access and writes to disk; confirm with the user before calling. Exposed by default; an operator may disable it.",
+            {},
+            read_only=False,
+            idempotent=True,
+        ),
+        _tool(
+            "geomap_prepare_knowledge",
+            "Download and install only the manifest-approved PEACE knowledge asset into the server data root. Performs network access and writes to disk; confirm with the user before calling. Exposed by default; an operator may disable it.",
             {},
             read_only=False,
             idempotent=True,

@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping
 
 from ..knowledge import Bounds, KnowledgeBundle, KnowledgeItem, KnowledgeRequest
 from ..knowledge import KnowledgeService
+from ..knowledge.preparation import KnowledgePreparationError, prepare_knowledge
 from ..knowledge.visualization import extract_knowledge_overlay, render_knowledge_overlay_svg
 from ..asset_installer import AssetInstallError
 from ..map_processing.detectors.preflight import detector_preflight
@@ -91,6 +92,8 @@ class GeomapMcpAdapter:
             _provider_capability(registration, getattr(service, "config", None))
             for registration in getattr(service, "_registrations", [])
         ]
+        knowledge_config = getattr(service, "config", None)
+        ready_provider_count = sum(1 for provider in providers if provider["ready"])
         geo_installed = _module_available("numpy") and _module_available("pyproj")
         capabilities = {
             "map_registration": _capability(
@@ -100,6 +103,7 @@ class GeomapMcpAdapter:
             ),
             "map_processing": _map_processing_capability(config),
             "detector_preparation": _detector_preparation_capability(config),
+            "knowledge_preparation": _knowledge_preparation_capability(knowledge_config),
             "georeferencing": _capability(
                 installed=geo_installed,
                 configured=True,
@@ -107,15 +111,21 @@ class GeomapMcpAdapter:
             ),
             "knowledge_query": _capability(
                 installed=True,
-                configured=any(provider["ready"] for provider in providers),
+                configured=ready_provider_count > 0,
                 missing=(
                     []
-                    if any(provider["ready"] for provider in providers)
+                    if ready_provider_count > 0
                     else ["at least one ready knowledge provider"]
                 ),
             ),
             "overlay_rendering": _capability(installed=True, configured=True, missing=[]),
         }
+        capabilities["knowledge_query"].update(
+            {
+                "ready_provider_count": ready_provider_count,
+                "registered_provider_count": len(providers),
+            }
+        )
         structured = {
             "schema_versions": {
                 "map_processing": "map-processing/v1",
@@ -332,6 +342,71 @@ class GeomapMcpAdapter:
         )
 
     @_traced
+    def prepare_knowledge(self) -> dict[str, Any]:
+        trace_id = _active_trace_id()
+        if not knowledge_preparation_enabled():
+            raise McpToolError(
+                "preparation_disabled",
+                "Knowledge preparation is disabled by the server operator.",
+                recovery_hints=[
+                    "Ask the server operator to unset GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION, "
+                    "or set it to true, and restart the server. Do not install knowledge assets "
+                    "from the client's shell; it is a different environment.",
+                ],
+            )
+        service = self._knowledge()
+        config = getattr(service, "config", None)
+        if config is None:
+            raise McpToolError(
+                "knowledge_configuration_mismatch",
+                "The knowledge service does not expose a provisionable configuration.",
+            )
+        try:
+            result = prepare_knowledge(config)
+        except KnowledgePreparationError as exc:
+            raise McpToolError("knowledge_configuration_mismatch", str(exc)) from exc
+        except AssetInstallError as exc:
+            raise McpToolError(
+                "asset_install_failed",
+                "The approved knowledge asset could not be installed.",
+                recovery_hints=[
+                    "Ask the server operator to inspect stderr using trace_id and repair or "
+                    "force-reinstall the incomplete asset."
+                ],
+            ) from exc
+
+        capabilities = self.list_capabilities()["structuredContent"]
+        providers = capabilities["providers"]
+        ready_count = sum(1 for provider in providers if provider["ready"])
+        ready_ids = [provider["id"] for provider in providers if provider["ready"]]
+        blocked_ids = [provider["id"] for provider in providers if not provider["ready"]]
+        summary = (
+            f"Prepared {len(result.assets)} approved knowledge asset(s). "
+            f"{ready_count} of {len(providers)} registered provider(s) are ready. "
+            f"Ready providers: {', '.join(ready_ids) or 'none'}. "
+            "Retry earlier requests to ready providers."
+        )
+        if blocked_ids:
+            summary += f" Still not ready: {', '.join(blocked_ids)}."
+        warnings = []
+        if ready_count < len(providers):
+            warnings.append(
+                "The knowledge asset was installed, but some providers still require Python "
+                "packages, credentials, source mirrors, or other configuration."
+            )
+        return success_result(
+            structured={
+                "assets": list(result.assets),
+                "providers": providers,
+                "knowledge_query": capabilities["capabilities"]["knowledge_query"],
+                "performs_network_access": True,
+                "warnings": warnings,
+            },
+            text_summary=summary,
+            trace_id=trace_id,
+        )
+
+    @_traced
     def georeference(
         self,
         *,
@@ -428,6 +503,8 @@ class GeomapMcpAdapter:
         except Exception as exc:  # noqa: BLE001
             if exc.__class__.__name__ in {"ProviderError", "ProviderOptionError"}:
                 raise McpToolError("unknown_provider", str(exc), trace_id=trace_id) from exc
+            if exc.__class__.__name__ in {"MissingAssetError", "OptionalDependencyError"}:
+                raise self._knowledge_not_ready(exc, trace_id=trace_id) from exc
             raise
         return self._bundle_result(bundle, trace_id=trace_id, map_id=map_id)
 
@@ -480,7 +557,12 @@ class GeomapMcpAdapter:
     @_traced
     def enrich_legend(self, label: str) -> dict[str, Any]:
         trace_id = _active_trace_id()
-        enrichment = self._knowledge().enrich_legend_label(label)
+        try:
+            enrichment = self._knowledge().enrich_legend_label(label)
+        except Exception as exc:  # noqa: BLE001 - optional knowledge failures need typed errors.
+            if exc.__class__.__name__ in {"MissingAssetError", "OptionalDependencyError"}:
+                raise self._knowledge_not_ready(exc, trace_id=trace_id) from exc
+            raise
         structured = legend_enrichment_to_mcp(enrichment)
         return success_result(
             structured=structured,
@@ -570,6 +652,9 @@ class GeomapMcpAdapter:
         map_id: str | None = None,
     ) -> dict[str, Any]:
         structured = knowledge_bundle_to_mcp(bundle)
+        structured["warnings"] = [
+            _scrub_path_tokens(str(warning)) for warning in structured.get("warnings", [])
+        ]
         bundle_resource = self.registry.register_bundle(structured, map_id=map_id)
         structured["bundle_uri"] = bundle_resource["uri"]
 
@@ -609,8 +694,9 @@ class GeomapMcpAdapter:
             summary += f": {breakdown}."
         else:
             summary += "; no provider returned records."
-        if structured.get("warnings"):
-            summary += f" {len(structured['warnings'])} warning(s)."
+        warnings = list(structured.get("warnings", []))
+        if warnings:
+            summary += f" {len(warnings)} warning(s): " + " | ".join(warnings)
         return success_result(
             structured=structured,
             text_summary=summary,
@@ -618,6 +704,42 @@ class GeomapMcpAdapter:
             resource_links=[
                 {"uri": bundle_resource["uri"], "name": "knowledge bundle", "mimeType": "application/json"}
             ],
+        )
+
+    def _knowledge_not_ready(self, exc: BaseException, *, trace_id: str) -> McpToolError:
+        scrubbed = _scrub_path_tokens(str(exc))
+        if exc.__class__.__name__ == "MissingAssetError":
+            if knowledge_preparation_enabled():
+                remedy = (
+                    "Call `geomap_prepare_knowledge` on this server after confirming with the "
+                    "user; it downloads approved assets and writes to disk."
+                )
+            else:
+                remedy = (
+                    "Ask the server operator to install `peace-knowledge-base` in the server "
+                    "environment or re-expose the knowledge preparation tool."
+                )
+            return McpToolError(
+                "missing_knowledge_asset",
+                f"A required knowledge asset is unavailable on the server. {remedy}",
+                trace_id=trace_id,
+                details={"knowledge_error": scrubbed},
+                recovery_hints=[
+                    remedy,
+                    "Do not run installer commands in the client shell; it is a different "
+                    "environment from the server.",
+                ],
+            )
+        remedy = (
+            "Ask the server operator to install the required Python extra in the server "
+            "environment; knowledge preparation installs assets only."
+        )
+        return McpToolError(
+            "missing_extra",
+            f"A knowledge provider dependency is unavailable on the server. {remedy}",
+            trace_id=trace_id,
+            details={"knowledge_error": scrubbed},
+            recovery_hints=[remedy],
         )
 
     def _preview_for_role(self, artifacts: list[Mapping[str, Any]], role: str) -> dict[str, Any] | None:
@@ -734,6 +856,15 @@ def detector_preparation_enabled() -> bool:
     return configured in {"1", "true", "yes", "y", "on"}
 
 
+def knowledge_preparation_enabled() -> bool:
+    """Knowledge provisioning is exposed unless an operator explicitly opts out."""
+
+    configured = os.getenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", "").strip().lower()
+    if not configured:
+        return True
+    return configured in {"1", "true", "yes", "y", "on"}
+
+
 def _capabilities_summary(capabilities: Mapping[str, Any], *, provider_count: int) -> str:
     """State readiness in text.
 
@@ -742,9 +873,22 @@ def _capabilities_summary(capabilities: Mapping[str, Any], *, provider_count: in
     """
 
     not_ready = [name for name, entry in capabilities.items() if not entry.get("ready")]
-    parts = [f"geomap MCP exposes {provider_count} knowledge providers."]
+    knowledge = capabilities.get("knowledge_query", {})
+    ready_provider_count = int(knowledge.get("ready_provider_count", 0))
+    registered_provider_count = int(
+        knowledge.get("registered_provider_count", provider_count)
+    )
+    parts = [
+        f"{ready_provider_count} of {registered_provider_count} knowledge providers are ready."
+    ]
     if not not_ready:
-        parts.append("All capabilities are ready.")
+        if ready_provider_count == registered_provider_count:
+            parts.append("All capabilities are ready.")
+        else:
+            parts.append(
+                "Knowledge support is partial; inspect each provider's ready status and "
+                "supported_requests before querying."
+            )
         return " ".join(parts)
     described = ", ".join(
         f"{name} ({len(capabilities[name].get('missing_requirements', []))} outstanding)"
@@ -760,6 +904,18 @@ def _capabilities_summary(capabilities: Mapping[str, Any], *, provider_count: in
         )
         parts.append(
             "Do not call `geomap_process_image` until map_processing is ready." + remedy
+        )
+    if not knowledge.get("ready"):
+        remedy = (
+            " Call `geomap_prepare_knowledge` first."
+            if capabilities.get("knowledge_preparation", {}).get("ready")
+            else " Ask the server operator to resolve them."
+        )
+        parts.append("Do not query knowledge until at least one provider is ready." + remedy)
+    elif ready_provider_count < registered_provider_count:
+        parts.append(
+            "Knowledge support is partial; inspect each provider's ready status and "
+            "supported_requests before querying."
         )
     return " ".join(parts)
 
@@ -863,6 +1019,32 @@ def _detector_preparation_capability(config: Any) -> dict[str, Any]:
     )
 
 
+def _knowledge_preparation_capability(config: Any | None) -> dict[str, Any]:
+    enabled = knowledge_preparation_enabled()
+    expected_root = config.data_root / "assets" / "knowledge" if config is not None else None
+    configured = bool(
+        config is not None
+        and Path(config.knowledge_root).resolve() == Path(expected_root).resolve()
+    )
+    installed = _module_available("gdown")
+    missing = []
+    if not enabled:
+        missing.append(
+            "knowledge preparation was disabled by the server operator; unset "
+            "GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION to restore the default"
+        )
+    if not installed:
+        missing.append("install the 'assets' extra in the server environment")
+    if not configured:
+        missing.append("knowledge paths must use the GEOMAP_DATA_ROOT manifest destinations")
+    return _capability(
+        registered=enabled,
+        installed=installed,
+        configured=configured,
+        missing=missing,
+    )
+
+
 # Absolute path tokens embedded mid-sentence survive redact_paths, which only replaces
 # whole values. Anchor on a separator not preceded by ':', '/', or a word character so
 # that geomap:// URIs and relative words are left intact.
@@ -905,9 +1087,7 @@ def _provider_capability(registration: Any, config: Any | None) -> dict[str, Any
     if provider_id in path_attributes and config is not None:
         configured = getattr(config, path_attributes[provider_id]).exists()
         if not configured:
-            missing.append(
-                "PEACE knowledge base; run `stratigraphic-amenity-assets peace-knowledge-base`"
-            )
+            missing.append(_knowledge_asset_remedy("PEACE knowledge base"))
         if provider_id in {
             "rock_knowledge",
             "component_usage_knowledge",
@@ -922,8 +1102,7 @@ def _provider_capability(registration: Any, config: Any | None) -> dict[str, Any
         )
         if not configured:
             missing.append(
-                "USGS earthquake data; run `stratigraphic-amenity-assets peace-knowledge-base` "
-                "or sync a source mirror"
+                _knowledge_asset_remedy("USGS earthquake data") + " or sync a source mirror"
             )
     elif provider_id == "active_faults" and config is not None:
         configured = config.resolved_active_fault_geojson_path.exists() or _source_mirror_present(
@@ -931,8 +1110,7 @@ def _provider_capability(registration: Any, config: Any | None) -> dict[str, Any
         )
         if not configured:
             missing.append(
-                "GEM active-fault data; run `stratigraphic-amenity-assets peace-knowledge-base` "
-                "or sync a source mirror"
+                _knowledge_asset_remedy("GEM active-fault data") + " or sync a source mirror"
             )
     elif provider_id in {"landcover_distribution", "population_density"}:
         installed = _module_available("ee")
@@ -950,6 +1128,7 @@ def _provider_capability(registration: Any, config: Any | None) -> dict[str, Any
         "id": provider_id,
         "name": registration.name,
         "output_keys": list(registration.output_keys),
+        "supported_requests": list(getattr(registration, "supported_requests", ())),
         "default_enabled": bool(registration.default_enabled),
         "registered": True,
         "installed": installed,
@@ -957,6 +1136,15 @@ def _provider_capability(registration: Any, config: Any | None) -> dict[str, Any
         "ready": bool(installed and configured and not missing),
         "missing_requirements": missing,
     }
+
+
+def _knowledge_asset_remedy(requirement: str) -> str:
+    if knowledge_preparation_enabled():
+        return f"{requirement}; call `geomap_prepare_knowledge` with user confirmation"
+    return (
+        f"{requirement}; ask the server operator to install `peace-knowledge-base` "
+        "in the server environment"
+    )
 
 
 def _source_mirror_present(root: Any, source_id: str) -> bool:

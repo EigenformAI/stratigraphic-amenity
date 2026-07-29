@@ -34,6 +34,7 @@ class ProviderRegistration:
     output_keys: tuple[str, ...]
     factory: ProviderFactory
     supports: SupportPredicate
+    supported_requests: tuple[str, ...] = ()
     default_enabled: bool = True
 
 
@@ -306,6 +307,7 @@ class KnowledgeService:
                     name="Rock type",
                 ),
                 supports=lambda request: bool(request.legend_labels),
+                supported_requests=("legend_labels",),
             ),
             ProviderRegistration(
                 id="rock_age",
@@ -318,6 +320,7 @@ class KnowledgeService:
                     name="Rock age",
                 ),
                 supports=lambda request: bool(request.legend_labels),
+                supported_requests=("legend_labels",),
             ),
             ProviderRegistration(
                 id="earthquake_history",
@@ -325,6 +328,7 @@ class KnowledgeService:
                 output_keys=("earthquake_history",),
                 factory=self._earthquake_provider_factory,
                 supports=lambda request: request.bounds is not None,
+                supported_requests=("bounds",),
             ),
             ProviderRegistration(
                 id="active_faults",
@@ -332,6 +336,7 @@ class KnowledgeService:
                 output_keys=("active_faults",),
                 factory=self._active_fault_provider_factory,
                 supports=lambda request: request.bounds is not None,
+                supported_requests=("bounds",),
             ),
             ProviderRegistration(
                 id="mineral_occurrences",
@@ -339,6 +344,7 @@ class KnowledgeService:
                 output_keys=("mineral_occurrences",),
                 factory=self._mineral_occurrence_provider_factory,
                 supports=lambda request: request.bounds is not None,
+                supported_requests=("bounds",),
                 default_enabled=False,
             ),
             ProviderRegistration(
@@ -352,6 +358,7 @@ class KnowledgeService:
                     max_pixels=self.config.earthengine_max_pixels,
                 ),
                 supports=lambda request: request.bounds is not None,
+                supported_requests=("bounds",),
                 default_enabled=False,
             ),
             ProviderRegistration(
@@ -365,6 +372,7 @@ class KnowledgeService:
                     max_pixels=self.config.earthengine_max_pixels,
                 ),
                 supports=lambda request: request.bounds is not None,
+                supported_requests=("bounds",),
                 default_enabled=False,
             ),
             ProviderRegistration(
@@ -389,6 +397,7 @@ class KnowledgeService:
                     local_files_only=self.config.semantic_local_files_only,
                 ),
                 supports=lambda request: bool(request.query_text),
+                supported_requests=("query_text",),
                 default_enabled=False,
             ),
             ProviderRegistration(
@@ -413,6 +422,7 @@ class KnowledgeService:
                     local_files_only=self.config.semantic_local_files_only,
                 ),
                 supports=lambda request: bool(request.query_text),
+                supported_requests=("query_text",),
                 default_enabled=False,
             ),
             ProviderRegistration(
@@ -437,6 +447,7 @@ class KnowledgeService:
                     local_files_only=self.config.semantic_local_files_only,
                 ),
                 supports=lambda request: bool(request.query_text),
+                supported_requests=("query_text",),
                 default_enabled=False,
             ),
         ]
@@ -692,6 +703,7 @@ class KnowledgeService:
             output_keys=output_keys,
             factory=lambda provider=provider: provider,
             supports=provider.supports,
+            supported_requests=tuple(getattr(provider, "supported_requests", ())),
             default_enabled=True,
         )
 
@@ -701,11 +713,13 @@ class KnowledgeService:
         warnings: list[str],
     ) -> tuple[list[ProviderRegistration], set[str]]:
         explicit_ids: set[str] = set()
+        unresolved: list[str] = []
         if request.include:
             selected: list[ProviderRegistration] = []
             for include in request.include:
                 matches = self._resolve_filter(include, warnings)
                 if not matches:
+                    unresolved.append(str(include))
                     continue
                 for registration in matches:
                     explicit_ids.add(registration.id)
@@ -730,8 +744,18 @@ class KnowledgeService:
         selected = [registration for registration in selected if registration.id not in exclude_ids]
         selected = self._dedupe_registrations(selected)
         if request.include and not selected:
+            # A guessed provider name and a real-but-unusable provider are different
+            # problems with different fixes; the caller must be able to tell them apart.
+            if unresolved:
+                known = ", ".join(sorted(item.id for item in self._registrations))
+                raise ProviderError(
+                    f"Include filter(s) {', '.join(repr(item) for item in unresolved)} did not "
+                    f"resolve to a knowledge provider. Registered providers: {known}."
+                )
+            detail = " ".join(warnings)
             raise ProviderError(
-                "No available knowledge providers matched the include filters for this request."
+                "Knowledge providers matched the include filters but none can serve this "
+                f"request. {detail}".strip()
             )
         return selected, explicit_ids
 

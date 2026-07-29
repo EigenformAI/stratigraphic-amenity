@@ -18,6 +18,7 @@ product.
 | `GEOMAP_CACHE_ROOT` | `<XDG cache>/stratigraphic-amenity` | all services/MCP | sensitive path | Derived artifacts, provider cache, registry, bundles, and overlays. |
 | `GEOMAP_MCP_ALLOWED_ROOTS` | data root plus cache root | MCP | sensitive path | OS-path-separator list of roots MCP may register/read. |
 | `GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION` | `true` | MCP | no | Expose the detector asset download/install tool. Set to `false` to withhold it; any unrecognized value also withholds it. |
+| `GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION` | `true` | MCP | no | Expose the knowledge asset download/install tool. Set to `false` to withhold it; any unrecognized value also withholds it. |
 | `GEOMAP_LOG_LEVEL` | `INFO` | MCP | no | Stderr threshold: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `GEOMAP_DATASET_SOURCE` | `usgs` | map processing | no | Provenance label and map-processing cache namespace segment. |
 | `GEOMAP_MODEL_ROOT` | `<data-root>/assets/models` | map processing | sensitive path | Parent of expected detector model directories. |
@@ -35,10 +36,10 @@ Expected detector files are `<model-root>/det_component/weights/best.pt` and
 runtime with `peace-yolov10-runtime`.
 
 The asset installer selects its root in this order: explicit `--root`, `GEOMAP_DATA_ROOT`, then
-the XDG default. A single installer root can provision detectors only when model and runtime paths
-use the standard destinations beneath that data root. Detector preparation is absent from MCP by
-default. Enabling it authorizes manifest-pinned network downloads and substantial disk writes; it
-does not authorize package-manager commands, arbitrary URLs, caller-selected paths, or `--force`.
+the XDG default. MCP detector and knowledge preparation are exposed by default and independently
+disableable. They require standard manifest destinations and authorize only their fixed,
+manifest-pinned downloads and disk writes; neither authorizes package-manager commands, arbitrary
+URLs, caller-selected paths, or `--force`.
 
 ## Local Knowledge Files And Sources
 
@@ -83,7 +84,8 @@ committed or passed to a model.
 | `GEOMAP_K2_USAGE_JSON` | `k2_usage.json` | sensitive path | `component_usage_knowledge` |
 | `GEOMAP_K2_EXPERTISE_JSON` | `k2_expertise.json` | sensitive path | `downstream_task_knowledge` |
 
-The default files are installed together by `stratigraphic-amenity-assets peace-knowledge-base`.
+The default files are installed together by `geomap_prepare_knowledge` or by the server operator
+with `stratigraphic-amenity-assets peace-knowledge-base`.
 
 ## Semantic Retrieval
 
