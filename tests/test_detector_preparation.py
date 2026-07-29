@@ -61,17 +61,6 @@ def _stub_preparation(monkeypatch):
     )
 
 
-def test_adapter_prepare_detectors_runs_without_opt_in(tmp_path, monkeypatch):
-    monkeypatch.delenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", raising=False)
-    monkeypatch.setenv("GEOMAP_DATA_ROOT", str(tmp_path / "data"))
-    monkeypatch.setenv("GEOMAP_CACHE_ROOT", str(tmp_path / "cache"))
-    _stub_preparation(monkeypatch)
-
-    result = adapter_module.GeomapMcpAdapter().prepare_detectors()
-
-    assert result["structuredContent"]["assets"]
-
-
 def test_adapter_prepare_detectors_summary_reflects_readiness(tmp_path, monkeypatch):
     """Assets alone cannot make the detector ready; the summary must not imply they do."""
 

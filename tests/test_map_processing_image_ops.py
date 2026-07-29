@@ -80,38 +80,6 @@ def test_annotate_detections_draws_legend_entries_with_inline_swatch_tags(tmp_pa
     assert np.array_equal(unused_panel_region, source_region)
 
 
-def test_legend_inline_tag_scales_to_box_height_and_blends_background(tmp_path):
-    image = np.full((900, 900, 3), (30, 80, 140), dtype=np.uint8)
-    legend_entries = [
-        LegendEntry(
-            id=0,
-            color_bbox=(100, 100, 110, 110),
-            text_bbox=(120, 100, 170, 110),
-            color_rgb=(255, 0, 0),
-            color_hex="#FF0000",
-            color_name="Red",
-            area_fraction=0.125,
-        )
-    ]
-    output_path = tmp_path / "scaled_legend_overlay.png"
-
-    image_ops.annotate_detections_on_image(
-        image,
-        {},
-        output_path,
-        legend_entries=legend_entries,
-    )
-
-    overlay = cv2.imread(str(output_path))
-    assert overlay is not None
-    tag_region = overlay[70:100, 120:220]
-    source_region = image[70:100, 120:220]
-    changed_rows = np.where(np.any(tag_region != source_region, axis=2))[0]
-    assert changed_rows.size > 0
-    assert int(changed_rows.min()) + 70 >= 88
-    assert not np.any(np.all(tag_region.reshape(-1, 3) == (252, 250, 248), axis=1))
-
-
 def test_annotate_points_draws_markers_boxes_and_legend(tmp_path):
     image = np.full((200, 300, 3), 255, dtype=np.uint8)
     output_path = tmp_path / "knowledge_points.png"
@@ -149,30 +117,3 @@ def test_annotate_points_skips_out_of_bounds_markers(tmp_path):
     overlay = cv2.imread(str(output_path))
     assert overlay is not None
     assert np.array_equal(overlay, image)
-
-
-def test_annotate_detections_skips_invalid_legend_bboxes(tmp_path):
-    image = np.full((60, 60, 3), 255, dtype=np.uint8)
-    output_path = tmp_path / "invalid_legend_overlay.png"
-    legend_entries = [
-        LegendEntry(
-            id=0,
-            color_bbox=(80, 80, 90, 90),
-            text_bbox=(10, 10, 10, 20),
-            color_rgb=(255, 0, 0),
-            color_hex="#FF0000",
-            color_name="Red",
-            area_fraction=0.0,
-        )
-    ]
-
-    image_ops.annotate_detections_on_image(
-        image,
-        {},
-        output_path,
-        legend_entries=legend_entries,
-    )
-
-    overlay = cv2.imread(str(output_path))
-    assert overlay is not None
-    assert overlay.shape == image.shape

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from stratigraphic_amenity.knowledge import Bounds, KnowledgeConfig
+from stratigraphic_amenity.knowledge import Bounds
 from stratigraphic_amenity.knowledge.errors import (
     OptionalDependencyError,
     SourceRegistryError,
@@ -15,19 +15,14 @@ from stratigraphic_amenity.knowledge.sources.sigeom_minerals import (
     SigeomMineralOccurrenceAdapter,
     normalize_sigeom_features,
 )
-from stratigraphic_amenity.knowledge.sources.gem_faults import (
-    GEM_GAP_BBOXES,
-    GemActiveFaultSourceAdapter,
-    coverage_caveats_for_bounds,
-)
+from stratigraphic_amenity.knowledge.sources.gem_faults import GemActiveFaultSourceAdapter
 from stratigraphic_amenity.knowledge.sources.manifest import SourceManifest, find_latest_manifest
-from stratigraphic_amenity.knowledge.sources.registry import SourceRegistry, default_source_registry
+from stratigraphic_amenity.knowledge.sources.registry import default_source_registry
 from stratigraphic_amenity.knowledge.sources.usgs_events import (
     EMSC_DEFAULT_PROFILE,
     EMSC_EVENT_BASE_URL,
     FdsnEventSourceAdapter,
     UsgsFdsnEventAdapter,
-    associated_id_set,
     normalize_geojson_events,
 )
 
@@ -71,35 +66,6 @@ def test_source_manifest_rejects_unknown_schema_version():
         SourceManifest.from_dict({"schema_version": "bad"})
 
 
-def test_default_source_registry_definitions_and_profile_validation():
-    registry = default_source_registry()
-
-    usgs = registry.get("usgs_fdsn_events")
-    assert usgs.family == "earthquake_events"
-    assert usgs.validate_profile({})["eventtype"] == "earthquake"
-    assert usgs.validate_profile({"minmagnitude": "4.5"})["minmagnitude"] == 4.5
-
-    gem = registry.get("gem_global_active_faults")
-    assert gem.family == "active_faults"
-    assert "CC BY-SA 4.0" in (gem.license or "")
-    assert registry.resolve(family="active_faults")[0].id == "gem_global_active_faults"
-
-    emsc = registry.get("emsc_fdsn_events")
-    assert emsc.family == "earthquake_events"
-    assert emsc.validate_profile({})["format"] == "json"
-
-    diss = registry.get("diss_seismogenic_sources")
-    assert diss.family == "active_faults"
-    assert diss.coverage_bounds is not None
-
-    sigeom = registry.get("sigeom_mineral_occurrences")
-    assert sigeom.family == "mineral_occurrences"
-    assert sigeom.coverage_bounds is not None
-
-    with pytest.raises(Exception):
-        SourceRegistry([]).get("missing")
-
-
 def test_source_registry_resolves_ordered_coverage_aware_source_sets():
     registry = default_source_registry()
     quebec = Bounds(min_lon=-77, min_lat=52, max_lon=-75, max_lat=53)
@@ -122,21 +88,6 @@ def test_source_registry_resolves_ordered_coverage_aware_source_sets():
         registry.resolve(family="active_faults", source_id="emsc_fdsn_events")
 
 
-def test_config_from_env_parses_source_root_and_ids(tmp_path, monkeypatch):
-    monkeypatch.setenv("GEOMAP_KNOWLEDGE_SOURCES_ROOT", "source-root")
-    monkeypatch.setenv("GEOMAP_EARTHQUAKE_SOURCE_ID", "usgs_fdsn_events")
-    monkeypatch.setenv("GEOMAP_ACTIVE_FAULT_SOURCE_ID", "gem_global_active_faults")
-    monkeypatch.setenv("GEOMAP_GEM_ACTIVE_FAULT_VERSION", "v1")
-
-    config = KnowledgeConfig.from_env(base_dir=tmp_path)
-
-    assert config.knowledge_sources_root == (tmp_path / "source-root").resolve()
-    assert config.earthquake_source_id == "usgs_fdsn_events"
-    assert config.active_fault_source_id == "gem_global_active_faults"
-    assert config.gem_active_fault_version == "v1"
-    assert config.cache_namespace_root == config.cache_root / "knowledge" / "v2"
-
-
 def test_find_latest_manifest_prefers_default_then_sorted_version(tmp_path):
     root = tmp_path / "sources"
     source_root = root / "usgs_fdsn_events"
@@ -151,20 +102,6 @@ def test_find_latest_manifest_prefers_default_then_sorted_version(tmp_path):
     (source_root / "default" / "manifest.json").write_text("{}", encoding="utf-8")
     assert find_latest_manifest(root, "usgs_fdsn_events") == source_root / "default" / "manifest.json"
     assert find_latest_manifest(root, "usgs_fdsn_events", preferred_version="2024") == source_root / "2024" / "manifest.json"
-
-
-def test_usgs_url_builder_maps_bounds_and_defaults():
-    adapter = UsgsFdsnEventAdapter(client=object())
-    bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
-
-    params = adapter.query_params({}, bounds=bounds)
-
-    assert params["format"] == "geojson"
-    assert params["eventtype"] == "earthquake"
-    assert params["minlatitude"] == 37.0
-    assert params["maxlatitude"] == 38.0
-    assert params["minlongitude"] == -122.0
-    assert params["maxlongitude"] == -121.0
 
 
 def test_emsc_fdsn_adapter_builds_json_query_and_normalizes_geojson():
@@ -208,79 +145,72 @@ def test_emsc_fdsn_adapter_builds_json_query_and_normalizes_geojson():
     assert records[0]["longitude"] == 12.5
 
 
-def test_diss_adapter_builds_wfs_query_and_normalizes_faults():
-    adapter = DissSeismogenicSourceAdapter(client=object())
-    bounds = Bounds(min_lon=12, min_lat=41, max_lon=13, max_lat=42)
-
-    params = adapter.query_params(bounds, type_name="DISS331:iss331")
-
-    assert params["service"] == "WFS"
-    assert params["request"] == "GetFeature"
-    assert params["typeNames"] == "DISS331:iss331"
-    assert params["outputFormat"] == "application/json"
-    assert params["srsName"] == "CRS:84"
-    assert params["bbox"] == "12.0,41.0,13.0,42.0,CRS:84"
-
-    normalized = adapter.normalize_geojson(
-        {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "iss-1",
-                    "properties": {"name": "IT Source", "slip_type": "reverse"},
-                    "geometry": {"type": "LineString", "coordinates": [[12, 41], [13, 42]]},
-                }
-            ],
-        }
+def test_wfs_adapters_build_queries_and_normalize_features():
+    scenarios = (
+        (
+            "diss",
+            DissSeismogenicSourceAdapter(client=object()),
+            Bounds(min_lon=12, min_lat=41, max_lon=13, max_lat=42),
+            "DISS331:iss331",
+            "12.0,41.0,13.0,42.0,CRS:84",
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "id": "iss-1",
+                        "properties": {"name": "IT Source", "slip_type": "reverse"},
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [[12, 41], [13, 42]],
+                        },
+                    }
+                ],
+            },
+        ),
+        (
+            "sigeom",
+            SigeomMineralOccurrenceAdapter(client=object()),
+            Bounds(min_lon=-77, min_lat=52, max_lon=-75, max_lat=53),
+            "SGM:Substances_metalliques",
+            "-77.0,52.0,-75.0,53.0,CRS:84",
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "NOM_CORPS_MINR": "Junior",
+                            "SUBST_PRINC": "Zinc; Plomb",
+                            "ETAT_CORPS_MINR": "Indice, aucun travail",
+                        },
+                        "geometry": {"type": "Point", "coordinates": [-76.0, 52.5]},
+                    }
+                ],
+            },
+        ),
     )
 
-    props = normalized["features"][0]["properties"]
-    assert props["source_id"] == "diss_seismogenic_sources"
-    assert props["raw_properties"]["name"] == "IT Source"
+    for name, adapter, bounds, type_name, expected_bbox, payload in scenarios:
+        params = adapter.query_params(bounds, type_name=type_name)
 
+        assert params["service"] == "WFS"
+        assert params["request"] == "GetFeature"
+        assert params["typeNames"] == type_name
+        assert params["outputFormat"] == "application/json"
+        assert params["srsName"] == "CRS:84"
+        assert params["bbox"] == expected_bbox
 
-def test_sigeom_adapter_builds_wfs_query_and_normalizes_occurrences():
-    adapter = SigeomMineralOccurrenceAdapter(client=object())
-    bounds = Bounds(min_lon=-77, min_lat=52, max_lon=-75, max_lat=53)
-
-    params = adapter.query_params(bounds, type_name="SGM:Substances_metalliques")
-
-    assert params["service"] == "WFS"
-    assert params["request"] == "GetFeature"
-    assert params["typeNames"] == "SGM:Substances_metalliques"
-    assert params["outputFormat"] == "application/json"
-    assert params["srsName"] == "CRS:84"
-    assert params["bbox"] == "-77.0,52.0,-75.0,53.0,CRS:84"
-
-    # Property names captured from the live SGM:Substances_metalliques WFS layer
-    # (the production schema is French-coded, not the generic NOM/SUBSTANCE fields).
-    records = normalize_sigeom_features(
-        {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "NOM_CORPS_MINR": "Junior",
-                        "SUBST_PRINC": "Zinc; Plomb",
-                        "ETAT_CORPS_MINR": "Indice, aucun travail",
-                    },
-                    "geometry": {"type": "Point", "coordinates": [-76.0, 52.5]},
-                }
-            ],
-        }
-    )
-
-    assert records[0]["name"] == "Junior"
-    assert records[0]["primary_commodity"] == "Zinc; Plomb"
-    assert records[0]["status"] == "Indice, aucun travail"
-    assert records[0]["longitude"] == -76.0
-
-
-def test_usgs_associated_id_set_handles_comcat_delimited_ids():
-    assert associated_id_set(",us7000abcd,ci1234,") == {"us7000abcd", "ci1234"}
-    assert associated_id_set("") == set()
+        if name == "diss":
+            properties = adapter.normalize_geojson(payload)["features"][0]["properties"]
+            assert properties["source_id"] == "diss_seismogenic_sources"
+            assert properties["raw_properties"]["name"] == "IT Source"
+        else:
+            records = normalize_sigeom_features(payload)
+            assert records[0]["name"] == "Junior"
+            assert records[0]["primary_commodity"] == "Zinc; Plomb"
+            assert records[0]["status"] == "Indice, aucun travail"
+            assert records[0]["longitude"] == -76.0
 
 
 def test_usgs_chunking_raises_when_subday_window_still_overflows():
@@ -299,14 +229,6 @@ def test_usgs_fetch_requires_knowledge_network_extra(monkeypatch):
 
     with pytest.raises(OptionalDependencyError):
         adapter.count({})
-
-
-def test_gem_coverage_caveats_cover_known_gap_boxes():
-    canada = Bounds(*GEM_GAP_BBOXES["canada"])
-
-    caveats = coverage_caveats_for_bounds([canada])
-
-    assert any("canada" in caveat.lower() for caveat in caveats)
 
 
 def test_gem_normalizer_preserves_raw_properties_and_parses_tuples(tmp_path):

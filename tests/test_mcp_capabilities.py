@@ -5,6 +5,8 @@ from stratigraphic_amenity.mcp.resources import ResourceRegistry
 
 
 def test_capabilities_separate_registration_from_readiness(tmp_path, monkeypatch):
+    from stratigraphic_amenity.knowledge import KnowledgeConfig, KnowledgeService
+
     data_root = tmp_path / "data"
     cache_root = tmp_path / "cache"
     model_root = tmp_path / "models"
@@ -57,41 +59,34 @@ def test_capabilities_separate_registration_from_readiness(tmp_path, monkeypatch
     assert result["capabilities"]["knowledge_query"]["ready_provider_count"] == 1
     assert result["capabilities"]["knowledge_query"]["registered_provider_count"] == 1
 
-
-def test_default_provider_capabilities_advertise_request_shapes(tmp_path, monkeypatch):
-    from stratigraphic_amenity.knowledge import KnowledgeConfig, KnowledgeService
-
-    config = KnowledgeConfig(
-        data_root=tmp_path / "data",
-        knowledge_root=tmp_path / "knowledge",
-        cache_root=tmp_path / "cache",
+    default_service = KnowledgeService(
+        config=KnowledgeConfig(
+            data_root=data_root,
+            knowledge_root=data_root / "knowledge",
+            cache_root=cache_root,
+        )
     )
-    service = KnowledgeService(config=config)
-    adapter = GeomapMcpAdapter(
+    default_adapter = GeomapMcpAdapter(
         registry=ResourceRegistry.from_env(base_dir=tmp_path),
-        knowledge_service_factory=lambda: service,
+        knowledge_service_factory=lambda: default_service,
     )
-
-    providers = {
-        item["id"]: item for item in adapter.list_capabilities()["structuredContent"]["providers"]
+    supported_requests = {
+        provider["id"]: provider["supported_requests"]
+        for provider in default_adapter.list_capabilities()["structuredContent"]["providers"]
     }
 
-    for provider_id in ("rock_type", "rock_age"):
-        assert providers[provider_id]["supported_requests"] == ["legend_labels"]
-    for provider_id in (
-        "earthquake_history",
-        "active_faults",
-        "mineral_occurrences",
-        "landcover_distribution",
-        "population_density",
-    ):
-        assert providers[provider_id]["supported_requests"] == ["bounds"]
-    for provider_id in (
-        "rock_knowledge",
-        "component_usage_knowledge",
-        "downstream_task_knowledge",
-    ):
-        assert providers[provider_id]["supported_requests"] == ["query_text"]
+    assert supported_requests == {
+        "rock_type": ["legend_labels"],
+        "rock_age": ["legend_labels"],
+        "earthquake_history": ["bounds"],
+        "active_faults": ["bounds"],
+        "mineral_occurrences": ["bounds"],
+        "landcover_distribution": ["bounds"],
+        "population_density": ["bounds"],
+        "rock_knowledge": ["query_text"],
+        "component_usage_knowledge": ["query_text"],
+        "downstream_task_knowledge": ["query_text"],
+    }
 
 
 def test_unrelated_ultralytics_install_cannot_replace_managed_runtime(tmp_path, monkeypatch):

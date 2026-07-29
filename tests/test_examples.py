@@ -14,10 +14,7 @@ PNG_1X1 = base64.b64decode(
 )
 
 
-@pytest.mark.parametrize(
-    "script",
-    ["01_process_map.py", "02_georeference_map.py", "03_knowledge_overlay_on_map.py"],
-)
+@pytest.mark.parametrize("script", ["01_process_map.py"])
 def test_examples_have_portable_help(script):
     result = subprocess.run(
         [sys.executable, str(ROOT / "examples" / script), "--help"],

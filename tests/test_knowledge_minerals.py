@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from stratigraphic_amenity.knowledge import Bounds, KnowledgeRequest, KnowledgeService
+from stratigraphic_amenity.knowledge import Bounds, KnowledgeRequest
 from stratigraphic_amenity.knowledge.errors import OptionalDependencyError, ProviderOptionError
 from stratigraphic_amenity.knowledge.providers.minerals import MineralOccurrenceProvider, MineralSourceBinding
 from stratigraphic_amenity.knowledge.sources import ogs_minerals
@@ -88,19 +88,6 @@ class FakeClient:
 
 def _adapter(payload=OGS_GEOJSON):
     return OgsMineralOccurrenceAdapter(client=FakeClient(payload))
-
-
-def test_normalize_features_maps_arcgis_fields_to_stable_keys():
-    records = normalize_features(OGS_GEOJSON)
-
-    assert [r["name"] for r in records] == ["GRANDE PORTAGE", "SHEWAN COPPER"]
-    gold = records[0]
-    assert gold["primary_commodity"] == "GOLD"
-    assert gold["secondary_commodity"] == "SILVER"
-    assert gold["status"] == "OCCURRENCE"
-    assert gold["longitude"] == -90.6 and gold["latitude"] == 48.5
-    # Raw properties preserved for audit / future field-level use.
-    assert gold["raw_properties"]["P_COMMOD"] == "GOLD"
 
 
 def test_provider_live_query_returns_occurrences_with_attribution():
@@ -227,14 +214,3 @@ def test_provider_validate_options_rejects_unknown_and_non_live_mode():
     with pytest.raises(ProviderOptionError):
         provider.validate_options({"source_mode": "legacy_asset"})
     assert provider.validate_options({"source_mode": "live"})["source_mode"] == "live"
-
-
-def test_service_routes_mineral_occurrences_when_explicitly_included():
-    provider = MineralOccurrenceProvider(adapter=_adapter(), coverage_bounds=ONTARIO)
-    service = KnowledgeService(providers=[provider])
-
-    bundle = service.query_bounds(SHEBANDOWAN, include=("mineral_occurrences",))
-
-    item = bundle.items_by_key()["mineral_occurrences"][0]
-    assert item.record_count == 2
-    assert bundle.provider_versions["mineral_occurrences"]

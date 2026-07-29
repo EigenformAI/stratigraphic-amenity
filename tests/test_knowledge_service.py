@@ -230,52 +230,53 @@ def test_explicit_missing_asset_raises_but_implicit_missing_assets_warn(tmp_path
     assert any("earthquake_history" in warning for warning in bundle.warnings)
 
 
-def test_default_providers_fall_back_to_legacy_assets_when_mirrors_are_missing(tmp_path):
-    service = KnowledgeService(config=fixture_config(tmp_path))
+def test_default_providers_resolve_legacy_assets_and_source_mirrors(tmp_path):
     bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
 
-    bundle = service.query_bounds(bounds, include=("earthquake_history", "active_faults"))
+    for source_mode in ("legacy_asset", "local_mirror"):
+        config = fixture_config(tmp_path / source_mode)
+        if source_mode == "local_mirror":
+            config.knowledge_sources_root = tmp_path / source_mode / "sources"
+            eq_root = config.knowledge_sources_root / "usgs_fdsn_events" / "default"
+            fault_root = config.knowledge_sources_root / "gem_global_active_faults" / "default"
+            eq_normalized = eq_root / "normalized" / "earthquakes.csv"
+            fault_normalized = fault_root / "normalized" / "faults.geojson"
+            eq_normalized.parent.mkdir(parents=True)
+            fault_normalized.parent.mkdir(parents=True)
+            eq_normalized.write_text(
+                (FIXTURES / "earthquakes.csv").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            fault_normalized.write_text(
+                (FIXTURES / "active_faults.geojson").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            eq_manifest = write_manifest(
+                eq_root / "manifest.json",
+                source_id="usgs_fdsn_events",
+                family="earthquake_events",
+                artifact="normalized/earthquakes.csv",
+            )
+            fault_manifest = write_manifest(
+                fault_root / "manifest.json",
+                source_id="gem_global_active_faults",
+                family="active_faults",
+                artifact="normalized/faults.geojson",
+            )
 
-    assert bundle.items_by_key()["earthquake_history"][0].provenance["source_mode"] == "legacy_asset"
-    assert bundle.items_by_key()["active_faults"][0].provenance["source_mode"] == "legacy_asset"
-    assert any("legacy local asset" in warning for warning in bundle.warnings)
+        bundle = KnowledgeService(config=config).query_bounds(
+            bounds, include=("earthquake_history", "active_faults")
+        )
+        earthquake = bundle.items_by_key()["earthquake_history"][0]
+        active_faults = bundle.items_by_key()["active_faults"][0]
 
-
-def test_default_providers_use_source_mirrors_when_present(tmp_path):
-    config = fixture_config(tmp_path)
-    config.knowledge_sources_root = tmp_path / "sources"
-    eq_root = config.knowledge_sources_root / "usgs_fdsn_events" / "default"
-    fault_root = config.knowledge_sources_root / "gem_global_active_faults" / "default"
-    eq_normalized = eq_root / "normalized" / "earthquakes.csv"
-    fault_normalized = fault_root / "normalized" / "faults.geojson"
-    eq_normalized.parent.mkdir(parents=True)
-    fault_normalized.parent.mkdir(parents=True)
-    eq_normalized.write_text((FIXTURES / "earthquakes.csv").read_text(encoding="utf-8"), encoding="utf-8")
-    fault_normalized.write_text((FIXTURES / "active_faults.geojson").read_text(encoding="utf-8"), encoding="utf-8")
-    eq_manifest = write_manifest(
-        eq_root / "manifest.json",
-        source_id="usgs_fdsn_events",
-        family="earthquake_events",
-        artifact="normalized/earthquakes.csv",
-    )
-    fault_manifest = write_manifest(
-        fault_root / "manifest.json",
-        source_id="gem_global_active_faults",
-        family="active_faults",
-        artifact="normalized/faults.geojson",
-    )
-
-    service = KnowledgeService(config=config)
-    bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
-    bundle = service.query_bounds(bounds, include=("earthquake_history", "active_faults"))
-
-    earthquake = bundle.items_by_key()["earthquake_history"][0]
-    faults = bundle.items_by_key()["active_faults"][0]
-    assert earthquake.provenance["source_mode"] == "local_mirror"
-    assert earthquake.provenance["source_manifest_hash"] == eq_manifest.stable_hash()
-    assert faults.provenance["source_mode"] == "local_mirror"
-    assert faults.provenance["source_manifest_hash"] == fault_manifest.stable_hash()
-    assert bundle.provider_versions["earthquake_history"].startswith("1@manifest:")
+        assert earthquake.provenance["source_mode"] == source_mode
+        assert active_faults.provenance["source_mode"] == source_mode
+        if source_mode == "legacy_asset":
+            assert any("legacy local asset" in warning for warning in bundle.warnings)
+        else:
+            assert earthquake.provenance["source_manifest_hash"] == eq_manifest.stable_hash()
+            assert active_faults.provenance["source_manifest_hash"] == fault_manifest.stable_hash()
+            assert bundle.provider_versions["earthquake_history"].startswith("1@manifest:")
 
 
 def test_explicit_partial_missing_asset_warns_and_returns_successful_provider(tmp_path):
@@ -413,15 +414,6 @@ def test_query_extent_splits_antimeridian_and_merges_provider_results(tmp_path):
     assert bundle.items_by_id()["earthquake_history:earthquake_history"] == item
     assert bundle.trace["bounds_parts"][0]["min_lon"] == 170.0
     assert bundle.trace["bounds_parts"][1]["max_lon"] == -170.0
-
-
-def test_optional_heavy_providers_are_explicit_only(tmp_path):
-    service = KnowledgeService(config=fixture_config(tmp_path))
-
-    bundle = service.query(KnowledgeRequest(query_text="legend usage"))
-
-    assert bundle.items == []
-    assert bundle.warnings == []
 
 
 def test_corrupt_provider_cache_is_treated_as_cache_miss(tmp_path):

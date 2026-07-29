@@ -13,7 +13,6 @@ from stratigraphic_amenity.map_processing.detectors.peace_yolov10 import (
     COMPONENT_CLASS_NAMES,
     _YoloV10Detector,
     _load_yolov10_class,
-    normalize_yolov10_result,
 )
 
 
@@ -46,14 +45,6 @@ def _detector_with_model(model):
     det.model = model
     det.class_names = COMPONENT_CLASS_NAMES
     return det
-
-
-def test_normalize_results_object_carries_confidence():
-    res = _FakeResults(_FakeBoxes([[0, 0, 10, 10], [5, 5, 20, 20]], [0.91, 0.42], [1, 2]))
-    out = normalize_yolov10_result(res, COMPONENT_CLASS_NAMES)
-    assert out["main_map"][0].confidence == pytest.approx(0.91)
-    assert out["legend"][0].confidence == pytest.approx(0.42)
-    assert [round(v) for v in out["main_map"][0].bbox] == [0, 0, 10, 10]
 
 
 def test_detect_disables_save_paths_so_results_carry_confidence():

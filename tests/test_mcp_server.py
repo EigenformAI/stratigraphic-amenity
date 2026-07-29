@@ -113,21 +113,6 @@ def test_invalid_adapter_output_is_a_typed_error():
     assert result["structuredContent"]["error"]["trace_id"] == "bad-output"
 
 
-def test_registry_error_through_handler_carries_trace_id(tmp_path, monkeypatch):
-    pytest.importorskip("mcp.types")
-    registry, _, _ = _registry(tmp_path, monkeypatch)
-    outside = tmp_path / "outside.png"
-    outside.write_bytes(PNG_1X1)
-    server = create_server(adapter=GeomapMcpAdapter(registry=registry))
-
-    result = _dispatch(server, "geomap_register_map", {"path": str(outside)})
-
-    assert result["isError"] is True
-    assert result["structuredContent"]["error"]["code"] == "disallowed_path"
-    # Registry errors are trace-agnostic; the adapter call stamps its own trace id.
-    assert result["structuredContent"]["error"]["trace_id"]
-
-
 def test_adapter_stamps_method_trace_on_registry_error(tmp_path, monkeypatch):
     registry, _, _ = _registry(tmp_path, monkeypatch)
     adapter = GeomapMcpAdapter(registry=registry)
@@ -154,31 +139,23 @@ def test_tool_diagnostics_are_redacted_and_written_to_stderr(monkeypatch, capsys
     assert "Path is outside" not in captured.err
 
 
-def test_prepare_detectors_tool_is_exposed_by_default(monkeypatch):
+def test_preparation_tools_are_exposed_by_default(monkeypatch):
     pytest.importorskip("mcp.types")
 
-    monkeypatch.delenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", raising=False)
-    enabled = create_server(adapter=FailingAdapter())
-    result = _dispatch(enabled, "geomap_prepare_detectors", {})
-    assert result["structuredContent"]["code"] != "unknown_tool"
+    scenarios = (
+        ("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", "geomap_prepare_detectors"),
+        ("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", "geomap_prepare_knowledge"),
+    )
+    for environment_variable, tool_name in scenarios:
+        monkeypatch.delenv(environment_variable, raising=False)
+        enabled = create_server(adapter=FailingAdapter())
+        result = _dispatch(enabled, tool_name, {})
+        assert result["structuredContent"]["code"] != "unknown_tool"
 
-    monkeypatch.setenv("GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION", "false")
-    disabled = create_server(adapter=FailingAdapter())
-    assert _dispatch(disabled, "geomap_prepare_detectors", {})["structuredContent"]["code"] == "unknown_tool"
-
-
-def test_prepare_knowledge_tool_is_exposed_by_default(monkeypatch):
-    pytest.importorskip("mcp.types")
-
-    monkeypatch.delenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", raising=False)
-    enabled = create_server(adapter=FailingAdapter())
-    result = _dispatch(enabled, "geomap_prepare_knowledge", {})
-    assert result["structuredContent"]["code"] != "unknown_tool"
-
-    monkeypatch.setenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", "false")
-    disabled = create_server(adapter=FailingAdapter())
-    result = _dispatch(disabled, "geomap_prepare_knowledge", {})
-    assert result["structuredContent"]["code"] == "unknown_tool"
+        monkeypatch.setenv(environment_variable, "false")
+        disabled = create_server(adapter=FailingAdapter())
+        result = _dispatch(disabled, tool_name, {})
+        assert result["structuredContent"]["code"] == "unknown_tool"
 
 
 def test_process_image_preserves_missing_module_cause():

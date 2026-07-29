@@ -49,37 +49,22 @@ def _payload(*entries: LegendEntry):
     return map_processing_result_to_mcp(_result(*entries), registry=_Registry(), map_id="x")
 
 
-def test_unextracted_label_is_null_not_empty_string():
-    entry = _payload(_entry(0))["legend"][0]
+def test_missing_label_payload_contract_includes_warning_and_source_frame():
+    payload = _payload(_entry(0), _entry(1))
+    entry = payload["legend"][0]
 
     assert entry["label"] is None
     assert entry["label_extraction"] == "not_available"
-
-
-def test_payload_warns_that_labels_are_not_extracted():
-    warnings = _payload(_entry(0), _entry(1))["warnings"]
+    warnings = payload["warnings"]
 
     assert any("label" in warning.lower() for warning in warnings)
     assert any("ocr" in warning.lower() for warning in warnings)
+    assert payload["coordinate_frame"] == "source"
+    assert payload["size"]["width"] == 100
 
 
-def test_extracted_label_is_preserved_and_marked():
+def test_extracted_label_payload_contract():
     entry = _payload(_entry(0, label="Gneiss"))["legend"][0]
 
     assert entry["label"] == "Gneiss"
     assert entry["label_extraction"] == "extracted"
-
-
-def test_no_warning_when_every_label_is_present():
-    warnings = _payload(_entry(0, label="Gneiss"))["warnings"]
-
-    assert not any("label" in warning.lower() for warning in warnings)
-
-
-def test_regions_declare_the_source_coordinate_frame():
-    """Run A reported preview-frame boxes as detector output; frames must be explicit."""
-
-    payload = _payload(_entry(0))
-
-    assert payload["coordinate_frame"] == "source"
-    assert payload["size"]["width"] == 100

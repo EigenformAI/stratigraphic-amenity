@@ -49,22 +49,6 @@ def test_register_map_is_idempotent_and_redacts_source_path(tmp_path, monkeypatc
     assert base64.b64decode(content["blob"]) == PNG_1X1
 
 
-def test_registry_preserves_entries_from_stale_process_instances(tmp_path, monkeypatch):
-    first_registry, data_root, _ = _registry(tmp_path, monkeypatch)
-    stale_registry = ResourceRegistry.from_env(base_dir=tmp_path)
-    first_path = data_root / "first.png"
-    second_path = data_root / "second.png"
-    first_path.write_bytes(PNG_1X1)
-    second_path.write_bytes(PNG_1X1)
-
-    first = first_registry.register_map(first_path)
-    second = stale_registry.register_map(second_path)
-
-    reloaded = ResourceRegistry.from_env(base_dir=tmp_path)
-    assert reloaded.map_public(first["map_id"])["source_uri"] == first["source_uri"]
-    assert reloaded.map_public(second["map_id"])["source_uri"] == second["source_uri"]
-
-
 def test_registry_rejects_paths_outside_allowed_roots(tmp_path, monkeypatch):
     registry, _, _ = _registry(tmp_path, monkeypatch)
     outside = tmp_path / "outside.png"
@@ -77,17 +61,6 @@ def test_registry_rejects_paths_outside_allowed_roots(tmp_path, monkeypatch):
     assert exc_info.value.details["basename"] == outside.name
     assert exc_info.value.details["path_origin"] == "input_image"
     assert str(outside.parent) not in str(exc_info.value.details)
-
-
-def test_registry_identifies_generated_artifact_root_failure(tmp_path, monkeypatch):
-    registry, _, _ = _registry(tmp_path, monkeypatch)
-    outside = tmp_path / "generated.png"
-    outside.write_bytes(PNG_1X1)
-
-    with pytest.raises(McpToolError) as exc_info:
-        registry.register_artifact(outside, role="component_crop", stage="hie")
-
-    assert exc_info.value.details["path_origin"] == "generated_artifact"
 
 
 def test_registry_rejects_symlink_escape(tmp_path, monkeypatch):

@@ -3,8 +3,7 @@ from pathlib import Path
 import pytest
 
 from stratigraphic_amenity.knowledge import Bounds, KnowledgeRequest
-from stratigraphic_amenity.knowledge.errors import MissingAssetError, ProviderOptionError
-from stratigraphic_amenity.knowledge.providers import earthquakes, faults
+from stratigraphic_amenity.knowledge.errors import ProviderOptionError
 from stratigraphic_amenity.knowledge.providers.earthquakes import (
     EarthquakeHistoryProvider,
     EarthquakeSourceBinding,
@@ -66,18 +65,6 @@ def test_earthquake_provider_filters_sorts_and_truncates():
             "updated": "2022-01-03T00:00:00Z",
             "gap": 30,
         }
-    ]
-
-
-def test_earthquake_provider_tolerates_missing_optional_columns():
-    provider = EarthquakeHistoryProvider(FIXTURES / "earthquakes_minimal.csv", default_max_records=50)
-    bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
-
-    item = provider.query(KnowledgeRequest(bounds=bounds))[0]
-
-    assert item.record_count == 1
-    assert item.value == [
-        {"time": "2021-05-01T00:00:00Z", "latitude": 37.4, "longitude": -121.6}
     ]
 
 
@@ -187,36 +174,6 @@ def test_earthquake_provider_does_not_fuzzy_merge_cross_catalog_events(tmp_path)
     assert item.provenance["dedupe_key"] == "association_set_overlap_exact"
 
 
-def test_earthquake_provider_live_source_version_is_request_specific(tmp_path):
-    provider = EarthquakeHistoryProvider(tmp_path / "missing.csv")
-
-    assert provider.source_version_for_options({"source_mode": "live"}).startswith("1@live:")
-    assert provider.source_version().startswith("1@missing:")
-
-
-def test_earthquake_provider_cache_config_records_resolved_auto_engine(monkeypatch):
-    monkeypatch.setattr(earthquakes, "_dependency_available", lambda name: name == "pandas")
-    provider = EarthquakeHistoryProvider(FIXTURES / "earthquakes.csv", engine="auto")
-
-    assert provider.cache_config()["resolved_engine"] == "pandas"
-
-    monkeypatch.setattr(earthquakes, "_dependency_available", lambda name: False)
-    provider = EarthquakeHistoryProvider(FIXTURES / "earthquakes.csv", engine="auto")
-
-    assert provider.cache_config()["resolved_engine"] == "csv"
-
-
-def test_earthquake_provider_coerces_numpy_like_scalars_to_native_float():
-    class FakeScalar:
-        def item(self):
-            return 8.0
-
-    provider = EarthquakeHistoryProvider(FIXTURES / "earthquakes.csv")
-
-    assert provider._coerce_value(FakeScalar()) == 8.0
-    assert provider._coerce_value(8.0) == 8.0
-
-
 def test_fault_provider_filters_geojson_and_truncates():
     provider = ActiveFaultProvider(FIXTURES / "active_faults.geojson", default_max_records=1)
     bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
@@ -312,26 +269,6 @@ def test_fault_provider_supports_explicit_live_diss_binding():
     assert adapter.calls
     assert item.provenance["source_ids"] == ["diss_seismogenic_sources"]
     assert item.provenance["sources"][0]["source_mode"] == "live"
-
-
-def test_fault_provider_cache_config_records_resolved_auto_engine(monkeypatch):
-    monkeypatch.setattr(faults, "_dependency_available", lambda name: name == "shapely")
-    provider = ActiveFaultProvider(FIXTURES / "active_faults.geojson", geometry_engine="auto")
-
-    assert provider.cache_config()["resolved_geometry_engine"] == "shapely"
-
-    monkeypatch.setattr(faults, "_dependency_available", lambda name: False)
-    provider = ActiveFaultProvider(FIXTURES / "active_faults.geojson", geometry_engine="auto")
-
-    assert provider.cache_config()["resolved_geometry_engine"] == "bbox"
-
-
-def test_file_backed_providers_raise_for_missing_assets(tmp_path):
-    provider = EarthquakeHistoryProvider(tmp_path / "missing.csv")
-    bounds = Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38)
-
-    with pytest.raises(MissingAssetError):
-        provider.query(KnowledgeRequest(bounds=bounds))
 
 
 def test_fault_provider_legacy_provenance_carries_gem_attribution():

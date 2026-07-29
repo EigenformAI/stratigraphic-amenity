@@ -72,6 +72,7 @@ def test_process_image_returns_resource_uris_and_bounded_preview(tmp_path, monke
     assert result["content"][0]["type"] == "text"
     assert any(part["type"] == "image" for part in result["content"])
     assert structured["preview"]["artifact_uri"].startswith("geomap://artifacts/")
+    assert structured["preview"]["metadata"]["coordinate_frame"] == "preview"
 
     artifact_resource = adapter.read_resource(structured["artifacts"][0]["uri"])
     assert artifact_resource["mimeType"] == "image/png"

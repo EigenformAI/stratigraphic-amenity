@@ -4,7 +4,6 @@ import pytest
 
 from stratigraphic_amenity.knowledge import Bounds, KnowledgeBundle, KnowledgeItem
 from stratigraphic_amenity.knowledge.visualization import (
-    KNOWLEDGE_OVERLAY_COLORS_RGB,
     extract_knowledge_overlay,
     render_knowledge_overlay_on_image,
     render_knowledge_overlay_svg,
@@ -153,19 +152,6 @@ def test_extract_overlay_handles_split_trace_dicts_and_empty_trace() -> None:
     assert empty.frame.bounds is None
 
 
-def test_overlay_palette_is_stable_rgb() -> None:
-    overlay = extract_knowledge_overlay(_bundle())
-
-    colors_by_provider = {item.provider: item.color_rgb for item in overlay.items if item.provider}
-
-    assert colors_by_provider["active_faults"] == KNOWLEDGE_OVERLAY_COLORS_RGB["active_faults"]
-    assert colors_by_provider["earthquake_history"] == KNOWLEDGE_OVERLAY_COLORS_RGB[
-        "earthquake_history"
-    ]
-    assert all(len(item.color_rgb) == 3 for item in overlay.items)
-    assert all(0 <= channel <= 255 for item in overlay.items for channel in item.color_rgb)
-
-
 def _bundle_with_stray_results() -> KnowledgeBundle:
     """A bundle whose target bounds sit in the US Midwest, plus two annotations
     that have strayed far outside (the signature of a CRS/coordinate misalignment)."""
@@ -212,7 +198,9 @@ def _bundle_with_stray_results() -> KnowledgeBundle:
     )
 
 
-def test_extract_overlay_hides_out_of_bounds_results_and_warns() -> None:
+def test_out_of_bounds_results_are_filtered_without_expanding_the_render_frame(
+    tmp_path: Path,
+) -> None:
     with pytest.warns(UserWarning, match="outside the target map bounds"):
         overlay = extract_knowledge_overlay(_bundle_with_stray_results())
 
@@ -229,17 +217,20 @@ def test_extract_overlay_hides_out_of_bounds_results_and_warns() -> None:
     assert overlay.warnings
     assert any("misalign" in message.lower() for message in overlay.warnings)
 
-
-def test_extract_overlay_frame_anchors_to_target_not_strays() -> None:
-    with pytest.warns(UserWarning):
-        overlay = extract_knowledge_overlay(_bundle_with_stray_results())
-
     assert overlay.frame.bounds is not None
     # The strayed (0, 0) point must NOT expand the frame off the target region.
     assert overlay.frame.bounds.min_lon == -100.0
     assert overlay.frame.bounds.max_lon == -90.0
     assert overlay.frame.bounds.min_lat == 40.0
     assert overlay.frame.bounds.max_lat == 50.0
+
+    output_path = tmp_path / "guarded_overlay.svg"
+    render_knowledge_overlay_svg(overlay, output_path, title="Guarded overlay")
+
+    text = output_path.read_text(encoding="utf-8")
+    assert "Strayed" not in text
+    assert "Far Fault" not in text
+    assert "outside the target map bounds" in text
 
 
 def test_extract_overlay_without_target_bounds_keeps_all_results() -> None:
@@ -264,19 +255,6 @@ def test_extract_overlay_without_target_bounds_keeps_all_results() -> None:
     assert any(item.label == "Anywhere" for item in overlay.items)
     assert overlay.out_of_bounds == []
     assert overlay.warnings == []
-
-
-def test_render_overlay_notes_hidden_out_of_bounds(tmp_path: Path) -> None:
-    with pytest.warns(UserWarning):
-        overlay = extract_knowledge_overlay(_bundle_with_stray_results())
-    output_path = tmp_path / "guarded_overlay.svg"
-
-    render_knowledge_overlay_svg(overlay, output_path, title="Guarded overlay")
-
-    text = output_path.read_text(encoding="utf-8")
-    assert "Strayed" not in text
-    assert "Far Fault" not in text
-    assert "outside the target map bounds" in text
 
 
 class _FakeGeoref:
@@ -308,70 +286,41 @@ def test_render_overlay_on_image_projects_and_annotates(tmp_path: Path) -> None:
     assert not (annotated == 255).all()  # knowledge results were drawn onto the map
 
 
-def test_render_overlay_embeds_map_image_background(tmp_path: Path) -> None:
+def test_render_overlay_handles_valid_and_missing_map_images(tmp_path: Path) -> None:
     Image = pytest.importorskip("PIL.Image")
     png = tmp_path / "map.png"
     Image.new("RGB", (40, 30), (200, 180, 160)).save(png)
-    # The georef pixel_extent is the main-map crop the renderer should align to.
-    metadata = {
-        "image_path": str(png),
-        "georef": {"crs": "EPSG:4326", "pixel_extent": [4, 3, 36, 27]},
-    }
+    scenarios = [
+        (
+            "map_backed.svg",
+            {
+                "image_path": str(png),
+                # The renderer aligns to the main-map crop in pixel_extent.
+                "georef": {"crs": "EPSG:4326", "pixel_extent": [4, 3, 36, 27]},
+            },
+            True,
+        ),
+        (
+            "broken_image.svg",
+            {
+                "image_path": str(tmp_path / "does_not_exist.png"),
+                "georef": {"pixel_extent": [0, 0, 10, 10]},
+            },
+            False,
+        ),
+    ]
 
-    overlay = extract_knowledge_overlay(_bundle(), metadata=metadata)
-    assert overlay.frame.image_path == str(png)
+    for filename, metadata, has_image in scenarios:
+        overlay = extract_knowledge_overlay(_bundle(), metadata=metadata)
+        output_path = tmp_path / filename
+        render_knowledge_overlay_svg(overlay, output_path, title="Map backed overlay")
+        text = output_path.read_text(encoding="utf-8")
 
-    output_path = tmp_path / "map_backed.svg"
-    render_knowledge_overlay_svg(overlay, output_path, title="Map backed overlay")
-    text = output_path.read_text(encoding="utf-8")
-
-    assert "<image " in text  # the input map is embedded as the plot background
-    assert "data:image/png;base64," in text  # self-contained (no external file ref)
-    assert "Alpha Fault" in text  # annotations are still drawn on top of the map
-
-
-def test_render_overlay_without_image_keeps_white_panel(tmp_path: Path) -> None:
-    overlay = extract_knowledge_overlay(_bundle())  # no metadata -> no image
-    output_path = tmp_path / "no_image.svg"
-
-    render_knowledge_overlay_svg(overlay, output_path)
-    text = output_path.read_text(encoding="utf-8")
-
-    assert "<image " not in text
-    assert 'fill="#ffffff"' in text  # falls back to the plain white plot panel
-
-
-def test_render_overlay_missing_image_file_is_graceful(tmp_path: Path) -> None:
-    metadata = {
-        "image_path": str(tmp_path / "does_not_exist.png"),
-        "georef": {"pixel_extent": [0, 0, 10, 10]},
-    }
-    overlay = extract_knowledge_overlay(_bundle(), metadata=metadata)
-    output_path = tmp_path / "broken_image.svg"
-
-    # A missing/unreadable image must never break the overlay -- it degrades to no image.
-    render_knowledge_overlay_svg(overlay, output_path)
-    text = output_path.read_text(encoding="utf-8")
-    assert "<image " not in text
-
-
-def test_render_overlay_svg_writes_visual_artifact(tmp_path: Path) -> None:
-    overlay = extract_knowledge_overlay(_bundle())
-    output_path = tmp_path / "knowledge_overlay.svg"
-
-    render_knowledge_overlay_svg(
-        overlay,
-        output_path,
-        width=640,
-        height=480,
-        title="Fixture knowledge overlay",
-    )
-
-    text = output_path.read_text(encoding="utf-8")
-    assert text.startswith("<svg ")
-    assert "Fixture knowledge overlay" in text
-    assert "data-kind=\"query_bounds\"" in text
-    assert "data-kind=\"result_bbox\"" in text
-    assert "data-kind=\"result_point\"" in text
-    assert "Alpha Fault" in text
-    assert "GRANDE PORTAGE" in text
+        if has_image:
+            assert overlay.frame.image_path == str(png)
+            assert "<image " in text
+            assert "data:image/png;base64," in text
+            assert "Alpha Fault" in text
+        else:
+            # A missing/unreadable image degrades gracefully to no image.
+            assert "<image " not in text

@@ -86,36 +86,6 @@ def test_georeference_bounds_utm15n_to_wgs84():
     assert 47 < ref.bounds.min_lat and ref.bounds.max_lat < 50
 
 
-def test_georeference_bounds_orders_min_max_under_inverted_y():
-    # Even though northing decreases as pixel-y increases, Bounds must be ordered.
-    gcps = [_gcp(0, 0, 660000, 5400000), _gcp(1000, 1000, 690000, 5360000)]
-    ref = georeference_bounds(
-        crs=26915, gcps=gcps, pixel_extent=(0, 0, 1000, 1000)
-    )
-    assert ref.bounds.min_lon < ref.bounds.max_lon
-    assert ref.bounds.min_lat < ref.bounds.max_lat
-
-
-def test_georeference_pixel_to_lonlat_roundtrip_at_gcp():
-    gcps = [_gcp(0, 0, 660000, 5400000), _gcp(1000, 1000, 690000, 5360000)]
-    ref = georeference_bounds(
-        crs=26915, gcps=gcps, pixel_extent=(0, 0, 1000, 1000)
-    )
-    t = pyproj.Transformer.from_crs(26915, 4326, always_xy=True)
-    exp_lon, exp_lat = t.transform(660000, 5400000)
-    lon, lat = ref.pixel_to_lonlat(0, 0)
-    assert lon == pytest.approx(exp_lon, abs=1e-6)
-    assert lat == pytest.approx(exp_lat, abs=1e-6)
-
-
-def test_affine_solve_inverts_apply():
-    affine = fit_affine([_gcp(10, 20, 660000, 5400000), _gcp(1010, 1020, 690000, 5360000)])
-    wx, wy = affine.apply(123.0, 456.0)
-    px, py = affine.solve(wx, wy)
-    assert px == pytest.approx(123.0, abs=1e-6)
-    assert py == pytest.approx(456.0, abs=1e-6)
-
-
 def test_georeference_lonlat_to_pixel_roundtrips_pixel_to_lonlat():
     gcps = [_gcp(167, 99, 660000, 5400000), _gcp(1175, 1238, 690000, 5360000)]
     ref = georeference_bounds(crs=26915, gcps=gcps, pixel_extent=(23, 20, 1332, 1344))

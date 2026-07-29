@@ -71,32 +71,38 @@ class FakeEarthEngine:
         return FakeImage(self.reduce_values)
 
 
-def test_earthengine_landcover_provider_shapes_distribution():
-    fake_ee = FakeEarthEngine({"Map": {"10.0": 3, "20.0": 1}})
-    provider = EarthEngineLandcoverProvider(ee_module=fake_ee, project="test-project")
+def test_earthengine_providers_initialize_project_and_shape_results():
+    scenarios = (
+        (
+            EarthEngineLandcoverProvider,
+            {"Map": {"10.0": 3, "20.0": 1}},
+            "landcover_distribution",
+            {"Trees": 75.0, "Shrubland": 25.0},
+            2,
+        ),
+        (
+            EarthEnginePopulationDensityProvider,
+            {"population": 1000},
+            "population_density",
+            {
+                "population_total": 1000,
+                "area_km2": 2.0,
+                "density_people_per_km2": 500.0,
+                "label": "500.0 people/km^2",
+            },
+            1,
+        ),
+    )
 
-    item = provider.query(
-        KnowledgeRequest(bounds=Bounds(min_lon=-1, min_lat=1, max_lon=2, max_lat=3))
-    )[0]
+    for provider_type, reduce_values, expected_key, expected_value, expected_count in scenarios:
+        fake_ee = FakeEarthEngine(reduce_values)
+        provider = provider_type(ee_module=fake_ee, project="test-project")
 
-    assert fake_ee.initialized_projects == ["test-project"]
-    assert item.key == "landcover_distribution"
-    assert item.value == {"Trees": 75.0, "Shrubland": 25.0}
-    assert item.record_count == 2
+        item = provider.query(
+            KnowledgeRequest(bounds=Bounds(min_lon=-1, min_lat=1, max_lon=2, max_lat=3))
+        )[0]
 
-
-def test_earthengine_population_provider_shapes_density():
-    fake_ee = FakeEarthEngine({"population": 1000})
-    provider = EarthEnginePopulationDensityProvider(ee_module=fake_ee)
-
-    item = provider.query(
-        KnowledgeRequest(bounds=Bounds(min_lon=-1, min_lat=1, max_lon=2, max_lat=3))
-    )[0]
-
-    assert item.key == "population_density"
-    assert item.value == {
-        "population_total": 1000,
-        "area_km2": 2.0,
-        "density_people_per_km2": 500.0,
-        "label": "500.0 people/km^2",
-    }
+        assert fake_ee.initialized_projects == ["test-project"]
+        assert item.key == expected_key
+        assert item.value == expected_value
+        assert item.record_count == expected_count
