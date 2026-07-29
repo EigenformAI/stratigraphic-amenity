@@ -1,0 +1,283 @@
+name: Release to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Validate and build release
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Validate tag and source versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          if re.fullmatch(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", tag) is None:
+              raise SystemExit(f"release tag must be vMAJOR.MINOR.PATCH, got {tag!r}")
+          expected = tag.removeprefix("v")
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          if project["name"] != "stratigraphic-amenity":
+              raise SystemExit(f"unexpected distribution name: {project['name']!r}")
+          if project["version"] != expected:
+              raise SystemExit(
+                  f"tag {tag!r} does not match pyproject version {project['version']!r}"
+              )
+          sys.path.insert(0, "src")
+          import stratigraphic_amenity
+
+          if stratigraphic_amenity.__version__ != expected:
+              raise SystemExit(
+                  "tag does not match runtime version "
+                  f"{stratigraphic_amenity.__version__!r}"
+              )
+          PY
+      - name: Require the tagged commit to be current main
+        run: |
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - name: Verify lock file
+        run: uv lock --check
+      - name: Install release test profile
+        run: >-
+          uv sync --locked --group dev
+          --extra mcp
+          --extra geo
+          --extra knowledge-local
+          --extra knowledge-network
+      - name: Run release checks
+        run: |
+          uv run ruff check .
+          uv run pytest
+          uv run --extra detectors pytest \
+            tests/test_map_processing_detector.py \
+            tests/test_map_processing_image_ops.py \
+            tests/test_map_processing_legend.py \
+            tests/test_map_processing_service.py \
+            tests/test_mcp_tools_process_image.py \
+            tests/test_knowledge_visualization.py
+          uv run --extra knowledge-semantic pytest tests/test_knowledge_semantic.py
+      - name: Build sdist and wheel
+        run: uv build --out-dir dist
+      - name: Compare artifacts with exact allowlists
+        run: python scripts/check_distribution.py dist
+      - name: Verify built version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import email
+          import os
+          import zipfile
+          from pathlib import Path
+
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          wheel = next(Path("dist").glob("*.whl"))
+          with zipfile.ZipFile(wheel) as archive:
+              metadata_name = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+              metadata = email.message_from_bytes(archive.read(metadata_name))
+          if metadata["Name"] != "stratigraphic-amenity":
+              raise SystemExit(f"unexpected built name: {metadata['Name']!r}")
+          if metadata["Version"] != expected:
+              raise SystemExit(f"unexpected built version: {metadata['Version']!r}")
+          artifacts = sorted(path.name for path in Path("dist").iterdir())
+          if len(artifacts) != 2 or not any(name.endswith(".whl") for name in artifacts) or not any(
+              name.endswith(".tar.gz") for name in artifacts
+          ):
+              raise SystemExit(f"expected one wheel and one sdist, got {artifacts}")
+          print("\n".join(artifacts))
+          PY
+      - name: Generate release SBOM and dependency-license report
+        run: |
+          uv venv /tmp/stratigraphic-amenity-release-wheel
+          wheel=$(realpath dist/*.whl)
+          uv pip install \
+            --python /tmp/stratigraphic-amenity-release-wheel/bin/python \
+            "${wheel}[mcp,geo]"
+          /tmp/stratigraphic-amenity-release-wheel/bin/stratigraphic-amenity-assets --list
+          mkdir -p /tmp/stratigraphic-amenity-release-smoke/data
+          mkdir -p /tmp/stratigraphic-amenity-release-smoke/cache
+          GEOMAP_DATA_ROOT=/tmp/stratigraphic-amenity-release-smoke/data \
+          GEOMAP_CACHE_ROOT=/tmp/stratigraphic-amenity-release-smoke/cache \
+          GEOMAP_MCP_ALLOWED_ROOTS=/tmp/stratigraphic-amenity-release-smoke/data:/tmp/stratigraphic-amenity-release-smoke/cache \
+            /tmp/stratigraphic-amenity-release-wheel/bin/python - <<'PY'
+          import asyncio
+          import os
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          async def smoke_test():
+              parameters = StdioServerParameters(
+                  command=(
+                      "/tmp/stratigraphic-amenity-release-wheel/bin/"
+                      "stratigraphic-amenity-mcp"
+                  ),
+                  env=os.environ.copy(),
+              )
+              async with stdio_client(parameters) as (read, write):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      result = await session.list_tools()
+                      assert len(result.tools) == 8
+
+          asyncio.run(smoke_test())
+          PY
+          mkdir -p reports
+          uvx --from cyclonedx-bom cyclonedx-py environment \
+            /tmp/stratigraphic-amenity-release-wheel/bin/python \
+            --output-format JSON \
+            --output-reproducible \
+            --output-file reports/sbom.cdx.json
+          /tmp/stratigraphic-amenity-release-wheel/bin/python -m pip install pip-licenses
+          /tmp/stratigraphic-amenity-release-wheel/bin/pip-licenses \
+            --format=json \
+            --with-urls \
+            --output-file reports/dependency-licenses.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-audit-reports
+          path: reports/
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    if: github.repository == 'EigenformAI/stratigraphic-amenity'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/stratigraphic-amenity
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-distributions
+          path: dist/
+      - name: Publish TestPyPI distributions and attestations
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
+          verify-metadata: true
+          skip-existing: true
+
+  testpypi-smoke:
+    name: Install and smoke-test TestPyPI
+    if: github.repository == 'EigenformAI/stratigraphic-amenity'
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the TestPyPI release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version=${RELEASE_TAG#v}
+          mkdir -p /tmp/stratigraphic-amenity-testpypi-dist
+          for attempt in 1 2 3 4 5 6; do
+            if python -m pip download \
+              --no-deps \
+              --index-url https://test.pypi.org/simple/ \
+              --dest /tmp/stratigraphic-amenity-testpypi-dist \
+              "stratigraphic-amenity==${version}"; then
+              break
+            fi
+            if [ "$attempt" = 6 ]; then exit 1; fi
+            sleep 15
+          done
+          wheel=$(realpath /tmp/stratigraphic-amenity-testpypi-dist/*.whl)
+          python -m pip install "${wheel}[mcp,geo]"
+      - name: Smoke-test installed TestPyPI commands
+        run: |
+          python -c 'import stratigraphic_amenity as sa; print(sa.__version__)'
+          stratigraphic-amenity-assets --list
+          mkdir -p /tmp/stratigraphic-amenity-testpypi/data
+          mkdir -p /tmp/stratigraphic-amenity-testpypi/cache
+          GEOMAP_DATA_ROOT=/tmp/stratigraphic-amenity-testpypi/data \
+          GEOMAP_CACHE_ROOT=/tmp/stratigraphic-amenity-testpypi/cache \
+          GEOMAP_MCP_ALLOWED_ROOTS=/tmp/stratigraphic-amenity-testpypi/data:/tmp/stratigraphic-amenity-testpypi/cache \
+            python - <<'PY'
+          import asyncio
+          import os
+          from shutil import which
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          async def smoke_test():
+              parameters = StdioServerParameters(
+                  command=which("stratigraphic-amenity-mcp"),
+                  env=os.environ.copy(),
+              )
+              async with stdio_client(parameters) as (read, write):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      result = await session.list_tools()
+                      assert len(result.tools) == 8
+
+          asyncio.run(smoke_test())
+          PY
+
+  publish:
+    name: Publish to PyPI with Trusted Publishing
+    if: github.repository == 'EigenformAI/stratigraphic-amenity'
+    needs:
+      - build
+      - testpypi-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/stratigraphic-amenity
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-distributions
+          path: dist/
+      - name: Publish distributions and attestations
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          attestations: true
+          verify-metadata: true
+          skip-existing: false

@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a scoped improvement to Stratigraphic Amenity
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the user or agent need rather than only a proposed implementation. Discuss larger ideas before investing in a pull request.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is blocked or unnecessarily difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior, including SDK or MCP contracts if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include trade-offs and any current workaround.
+    validations:
+      required: true
+  - type: textarea
+    id: provenance
+    attributes:
+      label: Dependencies and provenance
+      description: Identify any proposed code, model, dataset, service, license, or network dependency. Do not attach uncertain assets.
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: The proposal preserves asset-free and network-free defaults.
+          required: true
+        - label: Any proposed optional asset follows the public manifest and attribution policy.
+          required: true
+        - label: I searched existing issues and discussions.
+          required: true

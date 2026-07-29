@@ -11,6 +11,7 @@ stratigraphic_amenity/knowledge/bounds.py
 stratigraphic_amenity/knowledge/cache.py
 stratigraphic_amenity/knowledge/config.py
 stratigraphic_amenity/knowledge/errors.py
+stratigraphic_amenity/knowledge/preparation.py
 stratigraphic_amenity/knowledge/service.py
 stratigraphic_amenity/knowledge/types.py
 stratigraphic_amenity/knowledge/visualization.py
@@ -38,11 +39,13 @@ stratigraphic_amenity/map_processing/config.py
 stratigraphic_amenity/map_processing/errors.py
 stratigraphic_amenity/map_processing/image_ops.py
 stratigraphic_amenity/map_processing/legend.py
+stratigraphic_amenity/map_processing/preparation.py
 stratigraphic_amenity/map_processing/service.py
 stratigraphic_amenity/map_processing/types.py
 stratigraphic_amenity/map_processing/detectors/__init__.py
 stratigraphic_amenity/map_processing/detectors/base.py
 stratigraphic_amenity/map_processing/detectors/peace_yolov10.py
+stratigraphic_amenity/map_processing/detectors/preflight.py
 stratigraphic_amenity/mcp/__init__.py
 stratigraphic_amenity/mcp/adapter.py
 stratigraphic_amenity/mcp/errors.py

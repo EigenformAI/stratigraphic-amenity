@@ -39,6 +39,7 @@ src/stratigraphic_amenity/knowledge/bounds.py
 src/stratigraphic_amenity/knowledge/cache.py
 src/stratigraphic_amenity/knowledge/config.py
 src/stratigraphic_amenity/knowledge/errors.py
+src/stratigraphic_amenity/knowledge/preparation.py
 src/stratigraphic_amenity/knowledge/service.py
 src/stratigraphic_amenity/knowledge/types.py
 src/stratigraphic_amenity/knowledge/visualization.py
@@ -66,11 +67,13 @@ src/stratigraphic_amenity/map_processing/config.py
 src/stratigraphic_amenity/map_processing/errors.py
 src/stratigraphic_amenity/map_processing/image_ops.py
 src/stratigraphic_amenity/map_processing/legend.py
+src/stratigraphic_amenity/map_processing/preparation.py
 src/stratigraphic_amenity/map_processing/service.py
 src/stratigraphic_amenity/map_processing/types.py
 src/stratigraphic_amenity/map_processing/detectors/__init__.py
 src/stratigraphic_amenity/map_processing/detectors/base.py
 src/stratigraphic_amenity/map_processing/detectors/peace_yolov10.py
+src/stratigraphic_amenity/map_processing/detectors/preflight.py
 src/stratigraphic_amenity/mcp/__init__.py
 src/stratigraphic_amenity/mcp/adapter.py
 src/stratigraphic_amenity/mcp/errors.py
@@ -85,11 +88,17 @@ tests/fixtures/knowledge/k2_rock_age.json
 tests/fixtures/knowledge/k2_rock_type.json
 tests/fixtures/mcp_stdio_server.py
 tests/test_asset_manifest.py
+tests/test_detector_error_guidance.py
+tests/test_detector_preflight.py
+tests/test_detector_preparation.py
+tests/test_detector_preparation_gate.py
 tests/test_examples.py
 tests/test_georef_crs.py
 tests/test_georef_transform.py
+tests/test_inline_preview_frame.py
 tests/test_knowledge_earthengine.py
 tests/test_knowledge_minerals.py
+tests/test_knowledge_preparation.py
 tests/test_knowledge_providers.py
 tests/test_knowledge_query_map.py
 tests/test_knowledge_semantic.py
@@ -97,6 +106,7 @@ tests/test_knowledge_service.py
 tests/test_knowledge_sources.py
 tests/test_knowledge_types.py
 tests/test_knowledge_visualization.py
+tests/test_legend_label_provenance.py
 tests/test_map_processing_detector.py
 tests/test_map_processing_image_ops.py
 tests/test_map_processing_legend.py
@@ -112,4 +122,5 @@ tests/test_mcp_tools_process_image.py
 tests/test_paths.py
 tests/test_release_identity.py
 tests/test_repository_self_containment.py
+tests/test_result_text_surface.py
 pyproject.toml

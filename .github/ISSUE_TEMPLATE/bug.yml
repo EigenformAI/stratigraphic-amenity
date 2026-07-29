@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible defect in supported public functionality
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first. Do not include secrets, private maps, or sensitive paths. Report vulnerabilities through the private process in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Stratigraphic Amenity version
+      description: Package version or commit SHA.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, operating system, installation method, and enabled extras.
+      placeholder: "Python 3.11, Ubuntu, uv, extras: mcp and geo"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Python SDK
+        - MCP server or client integration
+        - Georeferencing
+        - Knowledge provider
+        - Packaging or installation
+        - Documentation
+        - Other public functionality
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include complete commands or code using synthetic or redistributable inputs.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include warnings, structured MCP errors, and provenance where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or trace IDs
+      description: Keep MCP stdout and stderr distinct. Remove credentials, paths, maps, and confidential responses.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: I identified installed manifest asset versions and any private modifications above.
+          required: true
+        - label: This report does not disclose a security vulnerability or sensitive data.
+          required: true

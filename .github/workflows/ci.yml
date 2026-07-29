@@ -1,0 +1,363 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify lock file
+        run: uv lock --check
+      - name: Install development tools
+        run: uv sync --locked --group dev
+      - name: Check lint
+        run: uv run ruff check .
+
+  tests:
+    name: Tests (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install lightweight test profile
+        run: >-
+          uv sync --locked --group dev
+          --extra mcp
+          --extra geo
+          --extra knowledge-local
+          --extra knowledge-network
+      - name: Run test suite
+        run: uv run pytest
+
+  self-containment:
+    name: Repository self-containment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install test runner
+        run: uv sync --locked --group dev
+      - name: Check public tree isolation
+        run: uv run pytest tests/test_repository_self_containment.py
+
+  optional-profiles:
+    name: Resolve ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - assets
+          - detectors
+          - geo
+          - knowledge-earthengine
+          - knowledge-local
+          - knowledge-network
+          - knowledge-semantic
+          - mcp
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+      - name: Verify optional profile resolution
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: uv export --locked --no-dev --extra "$PROFILE" --output-file /tmp/requirements.txt
+
+  detector-tests:
+    name: Detector-support tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install detector-support profile
+        run: uv sync --locked --group dev --extra detectors --extra geo
+      - name: Run detector-support and visualization tests
+        run: >-
+          uv run pytest
+          tests/test_map_processing_detector.py
+          tests/test_map_processing_image_ops.py
+          tests/test_map_processing_legend.py
+          tests/test_map_processing_service.py
+          tests/test_mcp_tools_process_image.py
+          tests/test_knowledge_visualization.py
+          tests/test_examples.py
+
+  semantic-tests:
+    name: Semantic-provider tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install semantic profile
+        run: uv sync --locked --group dev --extra knowledge-semantic
+      - name: Run semantic-provider tests
+        run: uv run pytest tests/test_knowledge_semantic.py
+
+  package:
+    name: Build and inspect distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify lock file
+        run: uv lock --check
+      - name: Build sdist and wheel
+        run: uv build --out-dir dist
+      - name: Compare artifacts with exact allowlists
+        run: python scripts/check_distribution.py dist
+      - name: Inspect exact artifact contents
+        run: |
+          python - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import tarfile
+          import zipfile
+
+          dist = Path("dist")
+          wheel = next(dist.glob("*.whl"))
+          sdist = next(dist.glob("*.tar.gz"))
+
+          with zipfile.ZipFile(wheel) as archive:
+              wheel_names = sorted(name for name in archive.namelist() if not name.endswith("/"))
+          print(f"{wheel}:\n" + "\n".join(wheel_names))
+          wheel_roots = {PurePosixPath(name).parts[0] for name in wheel_names}
+          expected_wheel_roots = {
+              "stratigraphic_amenity",
+              "stratigraphic_amenity-0.1.0.dist-info",
+          }
+          if wheel_roots != expected_wheel_roots:
+              raise SystemExit(f"unexpected wheel roots: {sorted(wheel_roots)}")
+
+          with tarfile.open(sdist, "r:gz") as archive:
+              raw_names = sorted(member.name for member in archive.getmembers() if member.isfile())
+          print(f"{sdist}:\n" + "\n".join(raw_names))
+          stripped = [name.split("/", 1)[1] for name in raw_names if "/" in name]
+          allowed_sdist_roots = {
+              ".env.example",
+              ".envrc.example",
+              ".gitignore",
+              "AGENTS.md",
+              "CHANGELOG.md",
+              "CITATION.cff",
+              "CODE_OF_CONDUCT.md",
+              "CONTRIBUTING.md",
+              "LICENSE",
+              "NOTICE",
+              "PKG-INFO",
+              "README.md",
+              "SECURITY.md",
+              "SUPPORT.md",
+              "assets",
+              "docs",
+              "examples",
+              "pyproject.toml",
+              "scripts",
+              "src",
+              "tests",
+          }
+          unexpected = sorted(
+              name for name in stripped if PurePosixPath(name).parts[0] not in allowed_sdist_roots
+          )
+          if unexpected:
+              raise SystemExit(f"unexpected sdist entries: {unexpected}")
+          excluded_trees = {
+              ("docs", "benchmarks"),
+              ("docs", "design"),
+              ("scripts", "benchmarks"),
+              ("runs",),
+          }
+          leaked = sorted(
+              name
+              for name in stripped
+              if any(PurePosixPath(name).parts[: len(tree)] == tree for tree in excluded_trees)
+          )
+          if leaked:
+              raise SystemExit(f"excluded content in sdist: {leaked}")
+          for required in ("LICENSE", "NOTICE", "CITATION.cff", "pyproject.toml"):
+              if required not in stripped:
+                  raise SystemExit(f"sdist is missing {required}")
+          PY
+      - name: Install wheel in an isolated environment
+        run: |
+          python -m venv /tmp/stratigraphic-amenity-wheel
+          /tmp/stratigraphic-amenity-wheel/bin/python -m pip install --upgrade pip
+          wheel=$(realpath dist/*.whl)
+          /tmp/stratigraphic-amenity-wheel/bin/python -m pip install "${wheel}[mcp,geo]"
+          /tmp/stratigraphic-amenity-wheel/bin/python - <<'PY'
+          import os
+          from pathlib import Path
+          import stratigraphic_amenity
+
+          package_path = Path(stratigraphic_amenity.__file__).resolve()
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          assert not package_path.is_relative_to(workspace), package_path
+          assert stratigraphic_amenity.__version__ == "0.1.0"
+          print(package_path)
+          PY
+      - name: Start installed MCP server and list tools over stdio
+        run: |
+          mkdir -p /tmp/stratigraphic-amenity-mcp/data /tmp/stratigraphic-amenity-mcp/cache
+          /tmp/stratigraphic-amenity-wheel/bin/python - <<'PY'
+          import asyncio
+          import os
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          expected = {
+              "geomap_enrich_legend",
+              "geomap_georeference",
+              "geomap_list_capabilities",
+              "geomap_process_image",
+              "geomap_query_knowledge",
+              "geomap_query_map",
+              "geomap_register_map",
+              "geomap_render_knowledge_overlay",
+          }
+
+          async def smoke_test():
+              root = "/tmp/stratigraphic-amenity-mcp"
+              env = os.environ.copy()
+              env.update(
+                  {
+                      "GEOMAP_DATA_ROOT": f"{root}/data",
+                      "GEOMAP_CACHE_ROOT": f"{root}/cache",
+                      "GEOMAP_MCP_ALLOWED_ROOTS": f"{root}/data:{root}/cache",
+                  }
+              )
+              parameters = StdioServerParameters(
+                  command="/tmp/stratigraphic-amenity-wheel/bin/stratigraphic-amenity-mcp",
+                  env=env,
+              )
+              async with stdio_client(parameters) as (read, write):
+                  async with ClientSession(read, write) as session:
+                      await session.initialize()
+                      result = await session.list_tools()
+                      names = {tool.name for tool in result.tools}
+                      assert names == expected, names
+                      print("\n".join(sorted(names)))
+
+          asyncio.run(smoke_test())
+          PY
+      - name: Generate runtime SBOM and dependency-license report
+        run: |
+          mkdir -p reports
+          uvx --from cyclonedx-bom cyclonedx-py environment \
+            /tmp/stratigraphic-amenity-wheel/bin/python \
+            --output-format JSON \
+            --output-reproducible \
+            --output-file reports/sbom.cdx.json
+          /tmp/stratigraphic-amenity-wheel/bin/python -m pip install pip-licenses
+          /tmp/stratigraphic-amenity-wheel/bin/pip-licenses \
+            --format=json \
+            --with-urls \
+            --output-file reports/dependency-licenses.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-audit-reports
+          path: reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v4
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

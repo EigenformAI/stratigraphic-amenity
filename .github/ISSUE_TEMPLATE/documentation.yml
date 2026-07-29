@@ -1,0 +1,33 @@
+name: Documentation report
+description: Report missing, incorrect, or unclear public documentation
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Document or URL
+      placeholder: "README.md or a public documentation URL"
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is incorrect or unclear?
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction
+      description: Include a verified command or source reference when applicable.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I checked the latest default branch and searched existing issues.
+          required: true
+        - label: This report contains no credentials, private paths, maps, or confidential data.
+          required: true
