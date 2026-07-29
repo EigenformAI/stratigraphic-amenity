@@ -187,7 +187,9 @@ when reporting a failure.
 
 Provider failures may be downgraded to bundle warnings when providers were selected by default
 or when another explicit federated source succeeds. If every explicitly requested provider
-fails, the tool fails. Always inspect the bundle even when the tool call succeeds.
+fails, the tool fails. Successful calls include preparation or operator remedies for unavailable
+providers and identify compatible providers skipped because they are disabled by default. Always
+inspect the bundle even when the tool call succeeds.
 
 ## Trust Boundaries
 

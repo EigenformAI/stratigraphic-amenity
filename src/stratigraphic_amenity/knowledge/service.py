@@ -71,7 +71,9 @@ class KnowledgeService:
         raw_extent: dict[str, Any] | None,
     ) -> KnowledgeBundle:
         warnings: list[str] = []
-        registrations, explicit_ids = self._select_registrations(request, warnings)
+        registrations, explicit_ids, providers_not_consulted = self._select_registrations(
+            request, warnings
+        )
         request = self._request_with_validated_provider_options(request, registrations, warnings)
         items: list[KnowledgeItem] = []
         provider_versions: dict[str, str] = {}
@@ -115,6 +117,18 @@ class KnowledgeService:
             except ProviderOptionError:
                 raise
             except (MissingAssetError, OptionalDependencyError) as exc:
+                trace_events.append(
+                    {
+                        "provider": registration.id,
+                        "status": "unavailable",
+                        "reason": (
+                            "missing_asset"
+                            if isinstance(exc, MissingAssetError)
+                            else "optional_dependency"
+                        ),
+                        "explicit": explicit,
+                    }
+                )
                 if explicit:
                     explicit_failures.append((registration.id, exc))
                     warnings.append(f"{registration.id}: {exc}")
@@ -122,6 +136,14 @@ class KnowledgeService:
                 warnings.append(f"{registration.id}: configured provider asset or dependency is unavailable.")
             except Exception as exc:  # noqa: BLE001 - provider boundaries should isolate failures.
                 provider_error = ProviderError(f"Provider {registration.id!r} failed: {exc}")
+                trace_events.append(
+                    {
+                        "provider": registration.id,
+                        "status": "failed",
+                        "reason": "provider_error",
+                        "explicit": explicit,
+                    }
+                )
                 if explicit:
                     explicit_failures.append((registration.id, provider_error))
                     warnings.append(
@@ -136,6 +158,7 @@ class KnowledgeService:
         trace = {
             "trace_id": request.trace_id,
             "providers": trace_events,
+            "providers_not_consulted": providers_not_consulted,
             "bounds_parts": [part.to_dict() for part in bounds_parts],
             "raw_extent": raw_extent,
         }
@@ -711,7 +734,7 @@ class KnowledgeService:
         self,
         request: KnowledgeRequest,
         warnings: list[str],
-    ) -> tuple[list[ProviderRegistration], set[str]]:
+    ) -> tuple[list[ProviderRegistration], set[str], list[dict[str, str]]]:
         explicit_ids: set[str] = set()
         unresolved: list[str] = []
         if request.include:
@@ -742,6 +765,15 @@ class KnowledgeService:
                 exclude_ids.add(registration.id)
 
         selected = [registration for registration in selected if registration.id not in exclude_ids]
+        providers_not_consulted = []
+        if not request.include:
+            providers_not_consulted = [
+                {"provider": registration.id, "reason": "disabled_by_default"}
+                for registration in self._registrations
+                if not registration.default_enabled
+                and registration.id not in exclude_ids
+                and registration.supports(request)
+            ]
         selected = self._dedupe_registrations(selected)
         if request.include and not selected:
             # A guessed provider name and a real-but-unusable provider are different
@@ -757,7 +789,7 @@ class KnowledgeService:
                 "Knowledge providers matched the include filters but none can serve this "
                 f"request. {detail}".strip()
             )
-        return selected, explicit_ids
+        return selected, explicit_ids, providers_not_consulted
 
     def _resolve_filter(
         self,

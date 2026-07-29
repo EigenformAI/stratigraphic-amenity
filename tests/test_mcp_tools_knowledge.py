@@ -4,6 +4,7 @@ import pytest
 
 from stratigraphic_amenity.knowledge import Bounds, KnowledgeConfig, KnowledgeService
 from stratigraphic_amenity.knowledge.errors import MissingAssetError, OptionalDependencyError
+from stratigraphic_amenity.knowledge.service import ProviderRegistration
 from stratigraphic_amenity.knowledge.types import KnowledgeItem
 from stratigraphic_amenity.mcp.adapter import GeomapMcpAdapter
 from stratigraphic_amenity.mcp.errors import McpToolError
@@ -111,6 +112,14 @@ def _adapter_with(tmp_path, monkeypatch, provider):
     return GeomapMcpAdapter(registry=registry, knowledge_service_factory=lambda: service)
 
 
+def _adapter_with_registrations(tmp_path, monkeypatch, registrations):
+    adapter = _adapter_with(tmp_path, monkeypatch, CountProvider())
+    config = adapter._knowledge().config
+    service = KnowledgeService(config=config, provider_registrations=registrations)
+    adapter._knowledge_service = service
+    return adapter
+
+
 def test_bundle_summary_reports_record_yield_not_item_count(tmp_path, monkeypatch):
     adapter = _adapter_with(tmp_path, monkeypatch, CountProvider())
 
@@ -201,6 +210,97 @@ def test_bundle_summary_scrubs_paths_embedded_in_warnings(tmp_path, monkeypatch)
     assert "Knowledge asset does not exist: <redacted>" in structured["warnings"][0]
     persisted = adapter.read_resource(structured["bundle_uri"])
     assert str(tmp_path) not in persisted["text"]
+
+
+def test_partial_missing_asset_warning_recommends_preparation(tmp_path, monkeypatch):
+    class MissingProvider(CountProvider):
+        id = "missing_fixture"
+        name = "Missing Fixture"
+        output_keys = ("missing_fixture",)
+
+        def query(self, request):
+            raise MissingAssetError(f"Missing asset: {tmp_path / 'private.json'}")
+
+    providers = [CountProvider(), MissingProvider()]
+    registrations = [
+        ProviderRegistration(
+            id=provider.id,
+            name=provider.name,
+            output_keys=provider.output_keys,
+            factory=lambda provider=provider: provider,
+            supports=provider.supports,
+            supported_requests=("bounds",),
+        )
+        for provider in providers
+    ]
+    adapter = _adapter_with_registrations(tmp_path, monkeypatch, registrations)
+
+    result = adapter.query_knowledge(
+        bounds={"min_lon": -91, "min_lat": 48, "max_lon": -90, "max_lat": 49},
+        include=["minerals_fixture", "missing_fixture"],
+    )
+    structured = result["structuredContent"]
+
+    assert structured["total_records_found"] == 86
+    assert "missing_fixture" in structured["text_summary"]
+    assert "geomap_prepare_knowledge" in structured["text_summary"]
+    assert str(tmp_path) not in json.dumps(result)
+
+
+def test_implicit_missing_asset_warning_escalates_when_preparation_is_hidden(
+    tmp_path, monkeypatch
+):
+    class MissingProvider(CountProvider):
+        id = "missing_fixture"
+        name = "Missing Fixture"
+        output_keys = ("missing_fixture",)
+
+        def query(self, request):
+            raise MissingAssetError("Missing asset")
+
+    provider = MissingProvider()
+    registration = ProviderRegistration(
+        id=provider.id,
+        name=provider.name,
+        output_keys=provider.output_keys,
+        factory=lambda: provider,
+        supports=provider.supports,
+        supported_requests=("bounds",),
+    )
+    monkeypatch.setenv("GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION", "false")
+    adapter = _adapter_with_registrations(tmp_path, monkeypatch, [registration])
+
+    result = adapter.query_knowledge(
+        bounds={"min_lon": -91, "min_lat": 48, "max_lon": -90, "max_lat": 49}
+    )
+    summary = result["structuredContent"]["text_summary"]
+
+    assert "missing_fixture" in summary
+    assert "server operator" in summary
+    assert "geomap_prepare_knowledge" not in summary
+
+
+def test_default_query_reports_compatible_provider_not_consulted(tmp_path, monkeypatch):
+    provider = CountProvider()
+    registration = ProviderRegistration(
+        id=provider.id,
+        name=provider.name,
+        output_keys=provider.output_keys,
+        factory=lambda: provider,
+        supports=provider.supports,
+        supported_requests=("bounds",),
+        default_enabled=False,
+    )
+    adapter = _adapter_with_registrations(tmp_path, monkeypatch, [registration])
+
+    result = adapter.query_knowledge(
+        bounds={"min_lon": -91, "min_lat": 48, "max_lon": -90, "max_lat": 49}
+    )
+    summary = result["structuredContent"]["text_summary"]
+
+    assert "minerals_fixture" in summary
+    assert "not consulted" in summary
+    assert 'include=["minerals_fixture"]' in summary
 
 
 @pytest.mark.parametrize(

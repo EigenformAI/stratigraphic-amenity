@@ -191,7 +191,9 @@ Returns a `knowledge/v2` bundle plus `bundle_uri`, `record_counts`,
 value, summary, source, `record_count`, truncation, and provenance. Writes provider cache entries
 when enabled and always writes a new bundle resource.
 The primary text summary repeats every bundle warning after path redaction so text-only MCP hosts
-do not turn warning evidence into a count.
+do not turn warning evidence into a count. Successful partial queries add an environment-aware
+preparation or operator remedy for unavailable providers. Broad queries also identify compatible
+providers not consulted because `default_enabled` is false and show how to opt in with `include`.
 
 Annotations: state-changing, non-idempotent.
 

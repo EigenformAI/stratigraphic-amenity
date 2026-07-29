@@ -655,6 +655,7 @@ class GeomapMcpAdapter:
         structured["warnings"] = [
             _scrub_path_tokens(str(warning)) for warning in structured.get("warnings", [])
         ]
+        structured["warnings"].extend(_knowledge_notice_warnings(structured.get("trace")))
         bundle_resource = self.registry.register_bundle(structured, map_id=map_id)
         structured["bundle_uri"] = bundle_resource["uri"]
 
@@ -1053,6 +1054,53 @@ _PATH_TOKEN = re.compile(r"(?<![:\w/\\])(?:[A-Za-z]:)?[/\\][^\s'\"`,;)]+")
 
 def _scrub_path_tokens(text: str) -> str:
     return _PATH_TOKEN.sub("<redacted>", text)
+
+
+def _knowledge_notice_warnings(trace: Any) -> list[str]:
+    if not isinstance(trace, Mapping):
+        return []
+    events = trace.get("providers", [])
+    missing_assets = sorted(
+        str(event.get("provider"))
+        for event in events
+        if isinstance(event, Mapping)
+        and event.get("provider")
+        and event.get("status") == "unavailable"
+        and event.get("reason") == "missing_asset"
+    )
+    missing_dependencies = sorted(
+        str(event.get("provider"))
+        for event in events
+        if isinstance(event, Mapping)
+        and event.get("provider")
+        and event.get("status") == "unavailable"
+        and event.get("reason") == "optional_dependency"
+    )
+    warnings: list[str] = []
+    if missing_assets:
+        providers = ", ".join(missing_assets)
+        if knowledge_preparation_enabled():
+            remedy = (
+                "Call `geomap_prepare_knowledge` on this server after confirming with the user."
+            )
+        else:
+            remedy = "Ask the server operator to install the required knowledge assets."
+        warnings.append(f"Knowledge assets are unavailable for: {providers}. {remedy}")
+    if missing_dependencies:
+        providers = ", ".join(missing_dependencies)
+        warnings.append(
+            f"Optional dependencies are unavailable for: {providers}. Ask the server operator "
+            "to install the required Python extras in the server environment."
+        )
+    for notice in trace.get("providers_not_consulted", []):
+        if not isinstance(notice, Mapping) or notice.get("reason") != "disabled_by_default":
+            continue
+        provider = str(notice.get("provider", "unknown"))
+        warnings.append(
+            f"Compatible provider {provider!r} was not consulted because it is disabled by "
+            f'default. Retry with include=["{provider}"].'
+        )
+    return warnings
 
 
 def _detector_cause(exc: BaseException) -> dict[str, Any]:

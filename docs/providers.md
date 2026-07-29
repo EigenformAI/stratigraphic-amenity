@@ -30,7 +30,8 @@ not sufficient.
 
 Without `include`, compatible `default_enabled` providers are selected. `include` and `exclude`
 accept normalized provider IDs, provider names, or output keys. Unknown or ambiguous filters
-produce warnings; an explicit include with no usable matches fails.
+produce warnings; an explicit include with no usable matches fails. A compatible provider that is
+disabled by default is reported as not consulted, with the exact `include` value needed to opt in.
 
 ```python
 bundle = service.query_bounds(

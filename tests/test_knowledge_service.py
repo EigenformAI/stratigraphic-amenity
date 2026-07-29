@@ -7,6 +7,7 @@ from stratigraphic_amenity.knowledge import Bounds, KnowledgeConfig, KnowledgeRe
 from stratigraphic_amenity.knowledge.cache import write_json_atomic
 from stratigraphic_amenity.knowledge.errors import MissingAssetError, ProviderError, ProviderOptionError
 from stratigraphic_amenity.knowledge.sources.manifest import SourceManifest
+from stratigraphic_amenity.knowledge.service import ProviderRegistration
 from stratigraphic_amenity.knowledge.types import SCHEMA_VERSION
 
 
@@ -293,6 +294,55 @@ def test_explicit_partial_missing_asset_warns_and_returns_successful_provider(tm
 
     assert bundle.items_by_key()["rock_type"][0].value["value"] == "sedimentary"
     assert any("earthquake_history" in warning for warning in bundle.warnings)
+    assert {
+        "provider": "earthquake_history",
+        "status": "unavailable",
+        "reason": "missing_asset",
+        "explicit": True,
+    } in bundle.trace["providers"]
+
+
+def test_default_query_records_compatible_provider_skipped_by_default(tmp_path):
+    class FixtureProvider:
+        id = "live_fixture"
+        version = "fixture-v1"
+        output_keys = ("live_fixture",)
+
+        def supports(self, request):
+            return request.bounds is not None
+
+        def validate_options(self, options):
+            return dict(options)
+
+        def query(self, request):
+            raise AssertionError("default-disabled provider must not be queried")
+
+    provider = FixtureProvider()
+    registration = ProviderRegistration(
+        id=provider.id,
+        name="Live fixture",
+        output_keys=provider.output_keys,
+        factory=lambda: provider,
+        supports=provider.supports,
+        supported_requests=("bounds",),
+        default_enabled=False,
+    )
+    service = KnowledgeService(
+        config=fixture_config(tmp_path), provider_registrations=[registration]
+    )
+
+    bundle = service.query_bounds(Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38))
+
+    assert bundle.items == []
+    assert bundle.trace["providers_not_consulted"] == [
+        {"provider": "live_fixture", "reason": "disabled_by_default"}
+    ]
+
+    excluded = service.query_bounds(
+        Bounds(min_lon=-122, min_lat=37, max_lon=-121, max_lat=38),
+        exclude=("live_fixture",),
+    )
+    assert excluded.trace["providers_not_consulted"] == []
 
 
 def test_from_env_is_cheap_and_baseline_imports_stay_light(tmp_path, monkeypatch):
