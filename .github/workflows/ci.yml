@@ -277,10 +277,14 @@ jobs:
           from mcp import ClientSession, StdioServerParameters
           from mcp.client.stdio import stdio_client
 
+          # Detector and knowledge provisioning are exposed unless an operator opts out
+          # with GEOMAP_MCP_ENABLE_*_PREPARATION, which this smoke test does not set.
           expected = {
               "geomap_enrich_legend",
               "geomap_georeference",
               "geomap_list_capabilities",
+              "geomap_prepare_detectors",
+              "geomap_prepare_knowledge",
               "geomap_process_image",
               "geomap_query_knowledge",
               "geomap_query_map",

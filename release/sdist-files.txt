@@ -83,7 +83,6 @@ src/stratigraphic_amenity/mcp/schemas.py
 src/stratigraphic_amenity/mcp/server.py
 tests/fixtures/knowledge/active_faults.geojson
 tests/fixtures/knowledge/earthquakes.csv
-tests/fixtures/knowledge/earthquakes_minimal.csv
 tests/fixtures/knowledge/k2_rock_age.json
 tests/fixtures/knowledge/k2_rock_type.json
 tests/fixtures/mcp_stdio_server.py
@@ -95,7 +94,6 @@ tests/test_detector_preparation_gate.py
 tests/test_examples.py
 tests/test_georef_crs.py
 tests/test_georef_transform.py
-tests/test_inline_preview_frame.py
 tests/test_knowledge_earthengine.py
 tests/test_knowledge_minerals.py
 tests/test_knowledge_preparation.py

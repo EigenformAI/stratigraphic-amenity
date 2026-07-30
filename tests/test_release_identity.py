@@ -26,3 +26,26 @@ def test_release_contract():
     assert "opencv-python-headless==4.10.0.84" in detectors
     assert "py-cpuinfo==9.0.0" in detectors
     assert "opencv-python==4.10.0.84" not in detectors
+
+
+def test_sdist_allowlist_tracks_the_working_tree():
+    """Deleting a source file must also retire its release allowlist entry.
+
+    scripts/check_distribution.py compares a built sdist against this allowlist, so
+    stale entries only surfaced in the CI package job, one step before publishing.
+    Checking the paths that come straight from the tree catches the drift in pytest.
+    """
+
+    tracked_roots = ("assets/", "docs/", "examples/", "src/", "tests/")
+    allowlist = [
+        line
+        for line in (ROOT / "release" / "sdist-files.txt").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    missing = sorted(
+        entry
+        for entry in allowlist
+        if entry.startswith(tracked_roots) and not (ROOT / entry).is_file()
+    )
+
+    assert missing == [], f"release/sdist-files.txt lists deleted files: {missing}"

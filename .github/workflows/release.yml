@@ -143,7 +143,7 @@ jobs:
                   async with ClientSession(read, write) as session:
                       await session.initialize()
                       result = await session.list_tools()
-                      assert len(result.tools) == 8
+                      assert len(result.tools) == 10, sorted(t.name for t in result.tools)
 
           asyncio.run(smoke_test())
           PY
@@ -153,7 +153,10 @@ jobs:
             --output-format JSON \
             --output-reproducible \
             --output-file reports/sbom.cdx.json
-          /tmp/stratigraphic-amenity-release-wheel/bin/python -m pip install pip-licenses
+          # This environment comes from `uv venv`, which does not bootstrap pip.
+          uv pip install \
+            --python /tmp/stratigraphic-amenity-release-wheel/bin/python \
+            pip-licenses
           /tmp/stratigraphic-amenity-release-wheel/bin/pip-licenses \
             --format=json \
             --with-urls \
@@ -251,7 +254,7 @@ jobs:
                   async with ClientSession(read, write) as session:
                       await session.initialize()
                       result = await session.list_tools()
-                      assert len(result.tools) == 8
+                      assert len(result.tools) == 10, sorted(t.name for t in result.tools)
 
           asyncio.run(smoke_test())
           PY
