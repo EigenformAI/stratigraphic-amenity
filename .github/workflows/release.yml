@@ -161,13 +161,13 @@ jobs:
             --format=json \
             --with-urls \
             --output-file reports/dependency-licenses.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-distributions
           path: dist/
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-audit-reports
           path: reports/
