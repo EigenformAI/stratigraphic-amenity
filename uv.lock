@@ -278,7 +278,7 @@ wheels = [
 
 [[package]]
 name = "earthengine-api"
-version = "1.7.32"
+version = "1.7.37"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -288,9 +288,9 @@ dependencies = [
     { name = "httplib2" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/4d/b914870ac335a054e047bdc3bcd7fb7170d2ba6a094ac370eb6a4a326537/earthengine_api-1.7.32.tar.gz", hash = "sha256:6390058804930ec54d5c41aa3321499718059dd9bd65e137dd2d9a2195b1fd7c", size = 432958, upload-time = "2026-06-22T21:27:27.263Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/1f/9b0e7ad095250f8544af0a969ed78dd74960fa0e00eeb79e7cbd37039866/earthengine_api-1.7.37.tar.gz", hash = "sha256:c54f95b18b456b2ec0ae4d7bb28ee5c900c50e652277e9f4e49d236d9269242e", size = 433309, upload-time = "2026-07-27T20:27:14.691Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/c3/ecf5b460a11ee1390be7c758419ce1207b09ee3769eb256ca7de00d0c843/earthengine_api-1.7.32-py3-none-any.whl", hash = "sha256:bd0582ddb6e4cab1ada844b816014924ad0b694b35d6dc4b9e5d623726978b6c", size = 480375, upload-time = "2026-06-22T21:27:25.63Z" },
+    { url = "https://files.pythonhosted.org/packages/19/3e/ce54b0f8053a072851b43a436987f69ad59e44c0658c33a06b5652f9c3e0/earthengine_api-1.7.37-py3-none-any.whl", hash = "sha256:ee57d5be45f100eddccf2559a9e092cb55fd8c7bf4be5b131a8a33ef4894ab77", size = 480680, upload-time = "2026-07-27T20:27:13.132Z" },
 ]
 
 [[package]]
@@ -1469,7 +1469,7 @@ wheels = [
 
 [[package]]
 name = "sentence-transformers"
-version = "5.6.0"
+version = "5.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -1481,9 +1481,9 @@ dependencies = [
     { name = "transformers" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f9/56/d2cb00765a6b15c994a7fccf20f9032f16e8193ca49147cb5155166ad744/sentence_transformers-5.6.0.tar.gz", hash = "sha256:0e7164d051e416c1853ade7c274ff52af3f9da0f4be7f0b83d734c27699e1057", size = 453194, upload-time = "2026-06-16T14:01:56.42Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/75/80/573ab31b77bdfa8f18051188adff3405e928386287cd6f756eff5777dd82/sentence_transformers-5.6.1.tar.gz", hash = "sha256:16af5d682ef66672b076d58599a23905800e850ec2bfb1865938306bf684ad72", size = 452185, upload-time = "2026-07-23T14:40:41.589Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/c1/dc1582b79e9a2eb0cddf9559cd9bcdff084f541d6fe881fdd9d98630dba7/sentence_transformers-5.6.0-py3-none-any.whl", hash = "sha256:d2075b5e687a1611005e20ab04a6846994d51adfcf39610aed066af3c0c0b81f", size = 596411, upload-time = "2026-06-16T14:01:55.103Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/ad/8f73f512dc7ad4031d2b64cbb67f70bdfb355756afbe0db610a5146415c1/sentence_transformers-5.6.1-py3-none-any.whl", hash = "sha256:cefbb17b6325a982a4732c8c49fb013375392687049d1de3d435c4b04060680b", size = 596677, upload-time = "2026-07-23T14:40:40.312Z" },
 ]
 
 [[package]]
@@ -1625,7 +1625,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "earthengine-api", marker = "extra == 'knowledge-earthengine'", specifier = ">=1,<2" },
+    { name = "earthengine-api", marker = "extra == 'knowledge-earthengine'", specifier = ">=1.7.37,<2" },
     { name = "gdown", marker = "extra == 'assets'", specifier = ">=5,<6" },
     { name = "httpx", marker = "extra == 'knowledge-network'", specifier = ">=0.27,<1" },
     { name = "huggingface-hub", marker = "extra == 'detectors'", specifier = ">=0.24,<1" },
@@ -1644,7 +1644,7 @@ requires-dist = [
     { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.4,<4" },
     { name = "pyyaml", marker = "extra == 'detectors'", specifier = ">=6,<7" },
     { name = "requests", marker = "extra == 'detectors'", specifier = ">=2,<3" },
-    { name = "sentence-transformers", marker = "extra == 'knowledge-semantic'", specifier = ">=3,<6" },
+    { name = "sentence-transformers", marker = "extra == 'knowledge-semantic'", specifier = ">=5.6.1,<6" },
     { name = "shapely", marker = "extra == 'knowledge-local'", specifier = ">=2,<3" },
     { name = "torch", marker = "extra == 'detectors'", specifier = "==2.0.1", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "stratigraphic-amenity", extra = "detectors" } },
     { name = "torch", marker = "extra == 'knowledge-semantic'", specifier = ">=2.2,<3" },
