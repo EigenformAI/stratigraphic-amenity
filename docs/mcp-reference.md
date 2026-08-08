@@ -1,10 +1,10 @@
 # MCP Reference
 
 Stratigraphic Amenity 0.1.0 exposes ten tools by default, including two independently
-operator-disableable provisioning tools, and resource reads through the local stdio
+operator-disableable provisioning tools, and resource discovery and reads through the local stdio
 transport. The server name is `stratigraphic-amenity`; the executable is
-`stratigraphic-amenity-mcp`. It does not expose HTTP, prompts, `resources/list`, or resource
-templates.
+`stratigraphic-amenity-mcp`. It does not expose HTTP or prompts. It advertises `resources`, lists
+concrete registered resources, and publishes templates for each `geomap://` URI family.
 
 ## Common Contract
 
@@ -170,11 +170,15 @@ Optional fields: `map_id` or `map_uri` (not both), four-number `pixel_extent`, a
 artifact bbox, stored main-map detection. If none is available, the call fails.
 
 Two GCPs fit an axis-aligned transform and must differ in both pixel axes. Three or more
-non-collinear GCPs fit a least-squares affine. Returns `georef/v1` with canonical CRS, six affine
-coefficients, EPSG:4326 bounds, residual, extent, GCPs, and count. With a map reference, writes
-`geomap://maps/<map-id>/georef.json` and updates registry state.
+non-collinear GCPs fit a general affine; four or more provide redundant least-squares and hold-out
+QA. Returns `georef/v1` with canonical CRS, six affine coefficients, EPSG:4326 bounds, native and
+metre residuals, fit method, diagnostic status, GCP pixel errors, holdout error, warnings, extent,
+GCPs, and count. With a map reference, writes an immutable
+`geomap://maps/<map-id>/georef/<revision>.json`, returns that URI, and updates
+`geomap://maps/<map-id>/georef.json` as the current-georeference alias used by later map tools.
 
-Annotations: state-changing, non-idempotent because georeference state is rewritten.
+Annotations: state-changing, non-idempotent because each call creates a georeference revision and
+updates the current pointer.
 
 ### `geomap_query_knowledge`
 
@@ -239,14 +243,18 @@ Annotations: state-changing, non-idempotent.
 | --- | --- | --- |
 | `geomap://maps/<id>` | Redacted map registration JSON | Registration creates state; reading writes a current `map.json` snapshot. |
 | `geomap://maps/<id>/source` | Original map image | Registered by `geomap_register_map`; complete image bytes may be read. |
-| `geomap://maps/<id>/georef.json` | `georef/v1` JSON | Written by map-backed georeferencing. |
+| `geomap://maps/<id>/georef.json` | `georef/v1` JSON | Mutable alias for the map's current georeference. |
+| `geomap://maps/<id>/georef/<revision>.json` | `georef/v1` JSON | Immutable revision returned by map-backed georeferencing. |
 | `geomap://artifacts/<id>.<ext>` | Crop or detector overlay | Written and registered by processing. |
 | `geomap://bundles/<id>.json` | Knowledge bundle snapshot | Written for every knowledge query. |
 | `geomap://overlays/<id>.<ext>` | SVG or PNG overlay | Written for every render call. |
 
-Clients discover URIs only from tool results and must retain them. Resource reads return text
-for JSON, SVG, and text files; other files are returned as bytes by the MCP SDK. Unknown,
-stale, escaped, or oversized backing files fail. The default resource-read limit is 50 MiB.
+Clients discover URIs from tool results or `resources/list`. Listed names and descriptions identify
+the resource role, owning map, label, and bbox when available. Resources larger than the configured
+read limit remain listed as evidence but their names and descriptions begin with `UNREADABLE` and
+state the observed and limit byte counts. Resource reads return text for JSON, SVG, and text files;
+other files are returned as bytes by the MCP SDK. Unknown, stale, escaped, or oversized backing
+files fail. The default resource-read limit is 50 MiB.
 
 ## Persistence And Paths
 
@@ -254,7 +262,7 @@ Default state:
 
 ```text
 <cache-root>/mcp/v1/registry.json
-<cache-root>/mcp/v1/maps/<map-id>/georef.json
+<cache-root>/mcp/v1/maps/<map-id>/georef/<revision>.json
 <cache-root>/mcp/v1/bundles/<bundle-id>.json
 <cache-root>/mcp/v1/overlays/<trace-id>.svg|png
 <cache-root>/knowledge/v2/providers/<provider-id>/<cache-key>.json

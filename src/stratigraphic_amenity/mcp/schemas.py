@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from ..knowledge.types import SCHEMA_VERSION as KNOWLEDGE_SCHEMA_VERSION
 from ..map_processing.types import SCHEMA_VERSION as MAP_PROCESSING_SCHEMA_VERSION
+from .digest import append_digest, build_digest
 from .resources import ResourceRegistry
 
 
@@ -106,6 +107,15 @@ def map_processing_result_to_mcp(
             "label_extraction 'not_available' have no transcribed text. Do not infer them "
             "from an image; ask the user or a separate OCR/VLM system."
         )
+    if not regions.get("legend") and regions.get("others"):
+        candidate_uris = [
+            entry.get("artifact_uri") for entry in regions["others"] if entry.get("artifact_uri")
+        ]
+        warnings.append(
+            "legend_not_detected: no legend region was found; "
+            f"{len(candidate_uris)} 'others' region(s) may contain it: "
+            + (", ".join(candidate_uris) if candidate_uris else "no readable candidate artifacts")
+        )
 
     payload = {
         "schema_version": MAP_PROCESSING_SCHEMA_VERSION,
@@ -177,11 +187,17 @@ def serialize_georef(
         },
         "bounds": georef.bounds.to_dict(),
         "residual": float(georef.residual),
+        "residual_units": georef.residual_units,
+        "residual_m": georef.residual_m,
+        "residual_diagnostic": georef.residual_diagnostic,
+        "fit_method": georef.fit_method,
+        "gcp_pixel_errors": list(georef.gcp_pixel_errors),
+        "holdout_error": georef.holdout_error,
         "pixel_extent": [float(value) for value in pixel_extent],
         "gcps": [dict(gcp) for gcp in gcps],
         "gcp_count": len(gcps),
         "trace_id": trace_id,
-        "warnings": [],
+        "warnings": list(georef.warnings),
     }
 
 
@@ -196,10 +212,11 @@ def success_result(
     output = dict(structured)
     output.setdefault("schema_version", "geomap-tool-result/v1")
     output.setdefault("trace_id", trace_id)
-    output.setdefault("text_summary", text_summary)
+    visible_text = append_digest(text_summary, build_digest(output))
+    output["text_summary"] = visible_text
     if resource_links:
         output["resource_links"] = list(resource_links)
-    result_content = [{"type": "text", "text": text_summary}]
+    result_content = [{"type": "text", "text": visible_text}]
     if content:
         result_content.extend(content)
     return {
@@ -375,6 +392,22 @@ GEOREFERENCE_SCHEMA: dict[str, Any] = {
         },
         "bounds": BOUNDS_SCHEMA,
         "residual": {"type": "number"},
+        "residual_units": {"type": "string"},
+        "residual_m": {"type": ["number", "null"]},
+        "residual_diagnostic": {"type": "boolean"},
+        "fit_method": {
+            "enum": [
+                "axis-aligned-exact-2gcp",
+                "affine-exact-3gcp",
+                "affine-least-squares",
+            ]
+        },
+        "gcp_pixel_errors": {
+            "type": "array",
+            "items": {"type": ["number", "null"]},
+        },
+        "holdout_error": {"type": ["number", "null"]},
+        "warnings": {"type": "array", "items": {"type": "string"}},
         "pixel_extent": {
             "type": "array",
             "minItems": 4,

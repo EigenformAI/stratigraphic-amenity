@@ -19,7 +19,9 @@ from stratigraphic_amenity.mcp.server import _run_stdio, create_server
 
 
 class FixtureMapService:
-    def process_image(self, image_path: str | Path) -> MapProcessingResult:
+    def process_image(
+        self, image_path: str | Path, *, cache_identity: str | None = None
+    ) -> MapProcessingResult:
         artifact = Path(os.environ["GEOMAP_CACHE_ROOT"]) / "fixture-main-map.png"
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_bytes(Path(image_path).read_bytes())

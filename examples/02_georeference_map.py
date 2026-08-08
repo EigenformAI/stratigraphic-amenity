@@ -44,7 +44,9 @@ def main() -> None:
         f"  bounds (EPSG:4326): lon [{bounds.min_lon:.4f}, {bounds.max_lon:.4f}], "
         f"lat [{bounds.min_lat:.4f}, {bounds.max_lat:.4f}]"
     )
-    print(f"  affine fit residual: {ref.residual:.4f} m")
+    print(f"  affine fit residual: {ref.residual:.4f} {ref.residual_units}")
+    print(f"  geodesic residual: {ref.residual_m:.2f} m")
+    print(f"  maximum holdout error: {ref.holdout_error or 'not available'}")
 
     x0, y0, x1, y1 = args.pixel_extent
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2

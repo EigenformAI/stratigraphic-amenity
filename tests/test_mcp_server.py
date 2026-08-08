@@ -78,6 +78,11 @@ def test_call_tool_preserves_typed_errors_over_server_handler():
         "module": "cpuinfo",
     }
     assert result["structuredContent"]["code"] == "disallowed_path"
+    text = result["content"][0]["text"]
+    assert "error.code: disallowed_path" in text
+    assert "trace_id: trace-fixture" in text
+    assert "recovery_hint: Choose a path under GEOMAP_MCP_ALLOWED_ROOTS." in text
+    assert result["structuredContent"]["text_summary"] == text
 
 
 def test_input_validation_error_is_structured_and_traced():
@@ -158,6 +163,57 @@ def test_preparation_tools_are_exposed_by_default(monkeypatch):
         assert result["structuredContent"]["code"] == "unknown_tool"
 
 
+def test_server_advertises_resource_discovery(tmp_path, monkeypatch):
+    pytest.importorskip("mcp.types")
+    registry, _, _ = _registry(tmp_path, monkeypatch)
+    server = create_server(adapter=GeomapMcpAdapter(registry=registry))
+
+    capabilities = server.create_initialization_options().capabilities
+
+    assert capabilities.resources is not None
+    assert capabilities.resources.listChanged is False
+
+
+def test_resource_descriptors_survive_mcp_serialization(tmp_path, monkeypatch):
+    mcp_types = pytest.importorskip("mcp.types")
+    registry, data_root, cache_root = _registry(tmp_path, monkeypatch)
+    image = data_root / "map.png"
+    image.write_bytes(PNG_1X1)
+    map_info = registry.register_map(image)
+    georef = registry.set_map_georef(map_info["map_id"], {"schema_version": "georef/v1"})
+    crop = cache_root / "crop.png"
+    crop.write_bytes(PNG_1X1)
+    artifact = registry.register_artifact(
+        crop,
+        role="component_crop",
+        stage="hie",
+        map_id="map-id",
+        bbox=[1, 2, 30, 40],
+        label="main_map",
+    )
+    registry.max_resource_read_bytes = 1
+    server = create_server(adapter=GeomapMcpAdapter(registry=registry))
+    handler = server.request_handlers[mcp_types.ListResourcesRequest]
+
+    async def invoke():
+        return await handler(mcp_types.ListResourcesRequest(method="resources/list"))
+
+    result = asyncio.run(invoke()).model_dump()
+    descriptor = next(
+        resource for resource in result["resources"] if str(resource["uri"]) == artifact["uri"]
+    )
+
+    assert "component_crop" in descriptor["name"]
+    assert descriptor["name"].startswith("UNREADABLE ")
+    assert "exceeds max_resource_read_bytes" in descriptor["description"]
+    assert "map_id=map-id" in descriptor["description"]
+    assert "label=main_map" in descriptor["description"]
+    assert "bbox=[1, 2, 30, 40]" in descriptor["description"]
+    uris = {str(resource["uri"]) for resource in result["resources"]}
+    assert georef["uri"] in uris
+    assert f"{map_info['map_uri']}/georef.json" in uris
+
+
 def test_process_image_preserves_missing_module_cause():
     class Registry:
         def map_public(self, map_id):
@@ -167,7 +223,7 @@ def test_process_image_preserves_missing_module_cause():
             return "/redacted/map.png"
 
     class MapService:
-        def process_image(self, _path):
+        def process_image(self, _path, *, cache_identity=None):
             cause = ModuleNotFoundError("No module named 'cpuinfo'", name="cpuinfo")
             raise DetectorLoadError("Unable to import the managed runtime.") from cause
 
@@ -192,7 +248,7 @@ def test_process_image_preserves_shared_library_cause_over_server(tmp_path, monk
     map_id = registry.register_map(image)["map_id"]
 
     class MapService:
-        def process_image(self, _path):
+        def process_image(self, _path, *, cache_identity=None):
             cause = ImportError("libGL.so.1: cannot open shared object file at /private/runtime")
             raise DetectorLoadError("Unable to import the managed runtime.") from cause
 

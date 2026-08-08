@@ -69,11 +69,13 @@ result = georeference_bounds(
 )
 print(result.bounds.to_dict())
 print(result.residual)
+print(result.residual_m, result.holdout_error, result.warnings)
 ```
 
-Two GCPs fit an axis-aligned transform and must differ in both pixel axes. Use three or more
-non-collinear GCPs for a general least-squares affine fit, and inspect the residual in map CRS
-units.
+Two GCPs fit an axis-aligned transform and must differ in both pixel axes. Three non-collinear
+GCPs exactly determine a general affine. Use at least four well-distributed GCPs for independent
+QA, and inspect `residual_m`, `holdout_error`, and warnings. Two- and three-GCP residuals are not
+diagnostic because those fits have no redundancy.
 
 ## Five-Minute MCP Start
 

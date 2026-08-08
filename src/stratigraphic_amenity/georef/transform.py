@@ -12,6 +12,7 @@ module owns the projection math.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Sequence
 
 from ..knowledge.bounds import Bounds
@@ -86,6 +87,13 @@ class GeoReference:
     affine: AffineTransform
     bounds: Bounds
     residual: float
+    fit_method: str
+    residual_units: str
+    residual_m: float | None
+    residual_diagnostic: bool
+    gcp_pixel_errors: tuple[float | None, ...]
+    holdout_error: float | None
+    warnings: tuple[str, ...]
     transformer: object = field(default=None, repr=False, compare=False)
 
     def pixel_to_lonlat(self, pixel_x: float, pixel_y: float) -> tuple[float, float]:
@@ -123,6 +131,12 @@ def fit_affine(gcps: Sequence[GroundControlPoint]) -> AffineTransform:
     points = list(gcps)
     if len(points) < 2:
         raise AffineFitError("At least 2 ground control points are required.")
+    if not all(
+        math.isfinite(value)
+        for point in points
+        for value in (point.pixel_x, point.pixel_y, point.world_x, point.world_y)
+    ):
+        raise AffineFitError("Ground control point coordinates must be finite numbers.")
     if len(points) == 2:
         return _fit_axis_aligned(points[0], points[1])
 
@@ -159,6 +173,70 @@ def _build_transformer(epsg: str, *, inverse: bool = False):
     return _pyproj.Transformer.from_crs(epsg, "EPSG:4326", always_xy=True)
 
 
+def _error_metres(
+    transformer: object,
+    predicted: tuple[float, float],
+    observed: tuple[float, float],
+) -> float:
+    predicted_lon, predicted_lat = transformer.transform(*predicted)
+    observed_lon, observed_lat = transformer.transform(*observed)
+    geod = _pyproj.Geod(ellps="WGS84")
+    _, _, distance = geod.inv(predicted_lon, predicted_lat, observed_lon, observed_lat)
+    return abs(float(distance))
+
+
+def _fit_method(gcp_count: int) -> str:
+    if gcp_count == 2:
+        return "axis-aligned-exact-2gcp"
+    if gcp_count == 3:
+        return "affine-exact-3gcp"
+    return "affine-least-squares"
+
+
+def _affine_warnings(affine: AffineTransform) -> list[str]:
+    warnings: list[str] = []
+    if affine.a <= 0:
+        warnings.append(
+            "nonstandard_x_direction:a<=0; expected only for an unrotated north-up scan"
+        )
+    if affine.e >= 0:
+        warnings.append(
+            "nonstandard_y_direction:e>=0; expected only for an unrotated north-up scan"
+        )
+    scale = max(abs(affine.a), abs(affine.e))
+    cross_term = max(abs(affine.b), abs(affine.d))
+    if scale and cross_term > 0.1 * scale:
+        warnings.append(
+            "substantial_rotation_or_shear:cross-term ratio exceeds 0.1; verify map orientation"
+        )
+    return warnings
+
+
+def _holdout_error_metres(
+    gcps: list[GroundControlPoint], transformer: object, warnings: list[str]
+) -> float | None:
+    if len(gcps) < 4:
+        return None
+    errors: list[float] = []
+    for index, held_out in enumerate(gcps):
+        training = gcps[:index] + gcps[index + 1 :]
+        try:
+            heldout_affine = fit_affine(training)
+        except AffineFitError:
+            warnings.append(f"holdout_subset_degenerate:gcp_index={index}")
+            continue
+        error = _error_metres(
+            transformer,
+            heldout_affine.apply(held_out.pixel_x, held_out.pixel_y),
+            (held_out.world_x, held_out.world_y),
+        )
+        if math.isfinite(error):
+            errors.append(error)
+        else:
+            warnings.append(f"holdout_metric_unavailable:gcp_index={index}")
+    return max(errors) if errors else None
+
+
 def georeference_bounds(
     *,
     crs: str | int,
@@ -172,7 +250,8 @@ def georeference_bounds(
     rotated/skewed grid is handled correctly.
     """
     epsg = resolve_crs(crs)
-    affine = fit_affine(gcps)
+    points = list(gcps)
+    affine = fit_affine(points)
     transformer = _build_transformer(epsg)
 
     x0, y0, x1, y1 = pixel_extent
@@ -188,6 +267,51 @@ def georeference_bounds(
     bounds = Bounds(
         min_lon=min(lons), min_lat=min(lats), max_lon=max(lons), max_lat=max(lats)
     )
+    warnings = _affine_warnings(affine)
+    residual_diagnostic = len(points) >= 4
+    if not residual_diagnostic:
+        warnings.append(
+            "residual_not_diagnostic: an exact fit has no independent error check; "
+            "supply at least 4 well-distributed GCPs"
+        )
+    metre_errors = [
+        _error_metres(
+            transformer,
+            affine.apply(point.pixel_x, point.pixel_y),
+            (point.world_x, point.world_y),
+        )
+        for point in points
+    ]
+    if all(math.isfinite(error) for error in metre_errors):
+        residual_m = math.sqrt(sum(error * error for error in metre_errors) / len(metre_errors))
+    else:
+        residual_m = None
+        warnings.append(
+            "metric_error_unavailable: one or more GCP errors could not be converted to metres"
+        )
+    pixel_errors: list[float | None] = []
+    for index, point in enumerate(points):
+        fitted_x, fitted_y = affine.solve(point.world_x, point.world_y)
+        error = math.hypot(fitted_x - point.pixel_x, fitted_y - point.pixel_y)
+        if math.isfinite(error):
+            pixel_errors.append(error)
+        else:
+            pixel_errors.append(None)
+            warnings.append(f"pixel_error_unavailable:gcp_index={index}")
+    crs_object = _pyproj.CRS.from_user_input(epsg)
+    residual_units = crs_object.axis_info[0].unit_name if crs_object.axis_info else "unknown"
+    holdout_error = _holdout_error_metres(points, transformer, warnings)
     return GeoReference(
-        crs=epsg, affine=affine, bounds=bounds, residual=affine.residual, transformer=transformer
+        crs=epsg,
+        affine=affine,
+        bounds=bounds,
+        residual=affine.residual,
+        fit_method=_fit_method(len(points)),
+        residual_units=residual_units,
+        residual_m=residual_m,
+        residual_diagnostic=residual_diagnostic,
+        gcp_pixel_errors=tuple(pixel_errors),
+        holdout_error=holdout_error,
+        warnings=tuple(warnings),
+        transformer=transformer,
     )

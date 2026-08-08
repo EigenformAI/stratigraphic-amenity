@@ -187,7 +187,7 @@ class GeomapMcpAdapter:
         resolved_map_id = self._resolve_map_id(map_id=map_id, map_uri=map_uri)
         image_path = self.registry.source_path(resolved_map_id)
         try:
-            result = self._map().process_image(image_path)
+            result = self._map().process_image(image_path, cache_identity=resolved_map_id)
         except Exception as exc:  # noqa: BLE001 - optional detector failures need typed MCP errors.
             cause = _detector_cause(exc)
             if exc.__class__.__name__ in {"OptionalDependencyError", "DetectorLoadError"} or cause:
@@ -644,6 +644,12 @@ class GeomapMcpAdapter:
     def read_resource(self, uri: str) -> dict[str, Any]:
         return self.registry.read_resource(uri)
 
+    def list_resources(self) -> list[dict[str, Any]]:
+        return self.registry.list_resources()
+
+    def list_resource_templates(self) -> list[dict[str, str]]:
+        return self.registry.list_resource_templates()
+
     def _bundle_result(
         self,
         bundle: Any,
@@ -935,7 +941,9 @@ def _processing_summary(structured: Mapping[str, Any], *, map_id: str, has_previ
     width, height = size.get("width"), size.get("height")
     regions = sum(len(items) for items in structured.get("regions", {}).values())
     parts = [
-        f"Processed map {map_id}: {regions} regions, {len(legend)} legend entries. "
+        f"Processed map {map_id}: {regions} regions. "
+        f"Legend region: {'detected' if structured.get('regions', {}).get('legend') else 'not detected'}. "
+        f"Legend extracted candidates: {len(legend)} (not a verified map-unit count). "
         f"All boxes are in the {width}x{height} source frame."
     ]
     unlabeled = [
@@ -943,7 +951,7 @@ def _processing_summary(structured: Mapping[str, Any], *, map_id: str, has_previ
     ]
     if unlabeled:
         parts.append(
-            f"{len(unlabeled)} of {len(legend)} legend entries have no extracted label because "
+            f"{len(unlabeled)} of {len(legend)} legend extracted candidates have no label because "
             "this build has no OCR. Report those entries as unlabeled; do not infer lithology "
             "names from the map image."
         )
@@ -1281,6 +1289,18 @@ def _georef_from_dict(data: Mapping[str, Any]) -> Any:
         affine=affine,
         bounds=Bounds(**data["bounds"]),
         residual=float(data["residual"]),
+        fit_method=str(data.get("fit_method", "unknown")),
+        residual_units=str(data.get("residual_units", "unknown")),
+        residual_m=(float(data["residual_m"]) if data.get("residual_m") is not None else None),
+        residual_diagnostic=bool(data.get("residual_diagnostic", False)),
+        gcp_pixel_errors=tuple(
+            float(value) if value is not None else None
+            for value in data.get("gcp_pixel_errors", [])
+        ),
+        holdout_error=(
+            float(data["holdout_error"]) if data.get("holdout_error") is not None else None
+        ),
+        warnings=tuple(str(value) for value in data.get("warnings", [])),
     )
 
 

@@ -23,7 +23,9 @@ evidence; it does not read text, decide which evidence is true, or produce the f
 6. Report coordinates only from the structured payload, which is `coordinate_frame: "source"`.
    Inlined previews are downsampled and carry `coordinate_frame: "preview"`; boxes measured on
    one frame are wrong in the other.
-7. Prefer at least three non-collinear GCPs; inspect affine residual in map CRS units.
+7. Prefer at least four well-distributed GCPs. Inspect `residual_m`, `holdout_error`, and warnings.
+   Two- and three-GCP fits are exact, so their in-sample residual is not an independent accuracy
+   check; obtain another GCP before relying on the bounds.
 8. Treat `warnings`, `record_count`, `truncated`, and each item's `provenance` as evidence.
 9. An empty result with a warning is not evidence of geological absence.
 10. If a required knowledge provider lacks `peace-knowledge-base`, request confirmation and call
@@ -135,7 +137,7 @@ and bundle resource. Use it only with operator authorization.
 Call `geomap_georeference` without a map reference and provide `crs`, `gcps`, and
 `pixel_extent`. This performs deterministic local projection math and returns `georef/v1`, but
 does not write a georef resource. Two GCPs fit only an axis-aligned transform; three or more fit
-a general affine and produce an RMS residual.
+a general affine. Four or more provide redundancy for residual and leave-one-out QA.
 
 ## Legend-Only Workflow
 
@@ -145,19 +147,22 @@ unready or infer lithology or age from an unavailable result.
 
 ## Resource Handling
 
-Resources are discoverable only in tool results; `resources/list` and URI templates are not
-implemented. Retain returned URIs and read them through MCP `resources/read`:
+Resources are discoverable through `resources/list`, URI templates, and tool-result evidence
+digests. Read relevant concrete URIs through MCP `resources/read`:
 
 - `geomap://maps/<map-id>`: redacted map registration JSON;
 - `geomap://maps/<map-id>/source`: original image bytes;
-- `geomap://maps/<map-id>/georef.json`: stored georeference JSON;
+- `geomap://maps/<map-id>/georef.json`: current stored georeference alias;
+- `geomap://maps/<map-id>/georef/<revision>.json`: immutable georeference returned by each fit;
 - `geomap://artifacts/<artifact-id>.<ext>`: generated crop or detection overlay;
 - `geomap://bundles/<bundle-id>.json`: knowledge bundle snapshot;
 - `geomap://overlays/<overlay-id>.<ext>`: SVG or PNG overlay.
 
-Text resources return text; other resources return bytes through MCP. Up to the 50 MiB resource
-read limit, a source URI can expose the complete user image to the client, so read it only when
-needed. URIs are local opaque
+Resource descriptions identify map ownership, role, label, and bbox when known. A listed resource
+whose name starts with `UNREADABLE` exceeds the server's configured read limit; do not spend a read
+request on it. Text resources return text; other resources return bytes through MCP. Up to the 50
+MiB resource read limit, a source URI can expose the complete user image to the client, so read it
+only when needed. URIs are local opaque
 handles, not portable web URLs. They remain valid only while the registry and backing files
 remain present under the same cache/allowed-root configuration.
 

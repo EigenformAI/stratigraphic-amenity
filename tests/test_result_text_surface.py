@@ -107,3 +107,6 @@ def test_processing_summary_scenarios():
             assert expected in summary
         for expected in scenario["lower_contains"]:
             assert expected in summary.lower()
+        assert "legend region: detected" in summary.lower()
+        assert "legend extracted candidates:" in summary.lower()
+        assert "legend entries" not in summary.lower()

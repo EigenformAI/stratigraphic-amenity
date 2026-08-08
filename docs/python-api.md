@@ -51,7 +51,9 @@ pixel_x, pixel_y = ref.lonlat_to_pixel(lon, lat)
 
 `resolve_crs` accepts an integer, `EPSG:<code>`, or common NAD27/NAD83/WGS84 UTM text. Bare UTM
 defaults to WGS84. Two GCPs fit an axis-aligned transform; three or more non-collinear points
-fit a general least-squares affine. `GeoReference.residual` is RMS error in world/map CRS units.
+fit a general affine. `GeoReference.residual` is RMS error in world/map CRS units;
+`residual_m` is geodesic RMS error in metres. Use four or more GCPs for a diagnostic residual and
+`holdout_error`; exact two- and three-point fits have no independent error check.
 Returned bounds are always EPSG:4326.
 
 ## Knowledge Service

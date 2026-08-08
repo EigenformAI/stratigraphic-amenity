@@ -21,6 +21,7 @@ from .adapter import (
     knowledge_preparation_enabled,
 )
 from .errors import McpToolError
+from .digest import append_digest, build_error_digest
 from .schemas import new_trace_id, tool_definitions
 
 
@@ -28,11 +29,15 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
     try:
         from mcp.server import Server  # type: ignore[import-not-found]
         from mcp.server.lowlevel.helper_types import ReadResourceContents
+        from mcp.shared.exceptions import McpError
         from mcp.types import (
             CallToolRequest,
             CallToolResult,
+            ErrorData,
             ImageContent,
+            Resource,
             ResourceLink,
+            ResourceTemplate,
             ServerResult,
             TextContent,
             Tool,
@@ -101,11 +106,21 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
             "isError": True,
             "error": err,
             **err,
-            "text_summary": message,
         }
+        visible_text = append_digest(
+            message,
+            build_error_digest(
+                code=code,
+                trace_id=resolved_trace,
+                details=details,
+                recovery_hints=recovery_hints,
+                cause=cause,
+            ),
+        )
+        structured["text_summary"] = visible_text
         return ServerResult(
             CallToolResult(
-                content=[TextContent(type="text", text=message)],
+                content=[TextContent(type="text", text=visible_text)],
                 structuredContent=structured,
                 isError=True,
             )
@@ -200,6 +215,11 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
             trace_id=str(structured["trace_id"]),
             resource_count=len(structured.get("resource_links", [])),
             provider_ids=providers,
+            digest_bytes=_digest_bytes(content[0].text if content else ""),
+            fit_method=structured.get("fit_method"),
+            gcp_count=structured.get("gcp_count"),
+            residual_m=structured.get("residual_m"),
+            warning_count=len(structured.get("warnings", [])),
         )
         return ServerResult(
             CallToolResult(
@@ -211,9 +231,43 @@ def create_server(adapter: GeomapMcpAdapter | None = None) -> Any:
 
     server.request_handlers[CallToolRequest] = call_tool
 
+    @server.list_resources()
+    async def list_resources() -> list[Any]:
+        return [Resource(**resource) for resource in adapter.list_resources()]
+
+    @server.list_resource_templates()
+    async def list_resource_templates() -> list[Any]:
+        return [
+            ResourceTemplate(**template) for template in adapter.list_resource_templates()
+        ]
+
     @server.read_resource()
     async def read_resource(uri: Any) -> list[Any]:
-        content = adapter.read_resource(str(uri))
+        started = time.perf_counter()
+        try:
+            content = adapter.read_resource(str(uri))
+        except McpToolError as exc:
+            trace_id = exc.trace_id or new_trace_id()
+            _log_resource(started, outcome=exc.code)
+            raise McpError(
+                ErrorData(
+                    code=-32000,
+                    message=exc.message,
+                    data={**exc.to_dict(), "trace_id": trace_id},
+                )
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc(file=sys.stderr)
+            _log_resource(started, outcome="internal_error")
+            raise McpError(
+                ErrorData(code=-32603, message="Unexpected error while reading resource.")
+            ) from exc
+        _log_resource(
+            started,
+            outcome="ok",
+            mime_type=str(content.get("mimeType") or "unknown"),
+            size=int(content.get("size", 0)),
+        )
         if "text" in content:
             return [
                 ReadResourceContents(
@@ -340,6 +394,11 @@ def _log_tool(
     trace_id: str,
     resource_count: int = 0,
     provider_ids: list[str] | None = None,
+    digest_bytes: int = 0,
+    fit_method: Any = None,
+    gcp_count: Any = None,
+    residual_m: Any = None,
+    warning_count: int = 0,
 ) -> None:
     if not _log_enabled("INFO"):
         return
@@ -348,7 +407,33 @@ def _log_tool(
         "event=tool_call "
         f"tool={name} trace_id={trace_id} duration_ms={duration_ms:.3f} "
         f"outcome={outcome} resource_count={resource_count} "
-        f"providers={','.join(provider_ids or []) or 'none'}",
+        f"providers={','.join(provider_ids or []) or 'none'} digest_bytes={digest_bytes} "
+        f"fit_method={fit_method or 'none'} gcp_count={gcp_count if gcp_count is not None else 'none'} "
+        f"residual_m={residual_m if residual_m is not None else 'none'} "
+        f"warning_count={warning_count}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def _digest_bytes(text: str) -> int:
+    marker = "Evidence digest:\n"
+    return len(text.partition(marker)[2].encode("utf-8")) if marker in text else 0
+
+
+def _log_resource(
+    started: float,
+    *,
+    outcome: str,
+    mime_type: str = "unknown",
+    size: int = 0,
+) -> None:
+    if not _log_enabled("INFO"):
+        return
+    duration_ms = (time.perf_counter() - started) * 1000
+    print(
+        "event=resource_read "
+        f"duration_ms={duration_ms:.3f} outcome={outcome} mime_type={mime_type} size={size}",
         file=sys.stderr,
         flush=True,
     )

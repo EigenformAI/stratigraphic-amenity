@@ -23,7 +23,7 @@ class _Registry:
 
 
 class _MissingRuntime:
-    def process_image(self, _path):
+    def process_image(self, _path, *, cache_identity=None):
         raise DetectorLoadError(
             "The managed PEACE YOLOv10 runtime is missing. Run "
             "`stratigraphic-amenity-assets peace-yolov10-runtime`."

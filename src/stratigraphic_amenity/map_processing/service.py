@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
+import re
 from typing import Any
 
 from . import image_ops
@@ -32,11 +34,14 @@ class MapProcessingService:
             self.config.resolved_ultralytics_root,
         )
 
-    def process_image(self, image_path: str | Path) -> MapProcessingResult:
+    def process_image(
+        self, image_path: str | Path, *, cache_identity: str | None = None
+    ) -> MapProcessingResult:
         image_path = Path(image_path)
         image = image_ops.read_image(image_path)
         width, height = image_ops.image_size(image)
         name = image_path.stem
+        cache_key = _cache_key(image_path, cache_identity)
 
         raw_regions = self.component_detector.detect(image_path)
         regions = normalize_detection_map(raw_regions, COMPONENT_LABELS)
@@ -48,25 +53,26 @@ class MapProcessingService:
             regions=regions,
         )
 
-        region_artifacts = self._write_component_artifacts(image, result)
+        region_artifacts = self._write_component_artifacts(image, result, cache_key)
         self._extract_legend(result, region_artifacts)
         self._estimate_areas(result, region_artifacts)
-        self._write_detection_overlay(image, result)
+        self._write_detection_overlay(image, result, cache_key)
 
         if self.config.write_cache:
-            self.cache.save_result(result)
+            self.cache.save_result(result, cache_key)
         return result
 
     def _write_component_artifacts(
         self,
         image: Any,
         result: MapProcessingResult,
+        cache_key: str,
     ) -> dict[str, list[Path]]:
         artifact_paths: dict[str, list[Path]] = {}
         for label, detections in result.regions.items():
             artifact_paths.setdefault(label, [])
             for index, detection in enumerate(detections):
-                artifact_path = self.cache.component_path(result.name, label, index)
+                artifact_path = self.cache.component_path(cache_key, label, index)
                 image_ops.crop_and_save_image(image, detection.bbox, artifact_path)
                 detection.artifact_path = str(artifact_path)
                 artifact_paths[label].append(artifact_path)
@@ -80,13 +86,17 @@ class MapProcessingService:
                     )
                 )
                 if label == "main_map":
-                    self._write_lonlat_artifact(result, artifact_path, index, artifact_paths)
+                    self._write_lonlat_artifact(
+                        result, artifact_path, index, artifact_paths, cache_key
+                    )
                 elif label == "index_map":
                     image_ops.annotate_image_with_directions(artifact_path, artifact_path)
         return artifact_paths
 
-    def _write_detection_overlay(self, image: Any, result: MapProcessingResult) -> None:
-        artifact_path = self.cache.visualization_path(result.name)
+    def _write_detection_overlay(
+        self, image: Any, result: MapProcessingResult, cache_key: str
+    ) -> None:
+        artifact_path = self.cache.visualization_path(cache_key)
         image_ops.annotate_detections_on_image(
             image,
             result.regions,
@@ -107,8 +117,9 @@ class MapProcessingService:
         main_map_path: Path,
         index: int,
         artifact_paths: dict[str, list[Path]],
+        cache_key: str,
     ) -> None:
-        lonlat_path = self.cache.component_path(result.name, "lonlat", index)
+        lonlat_path = self.cache.component_path(cache_key, "lonlat", index)
         image_ops.crop_corners_and_save_image(main_map_path, lonlat_path)
         artifact_paths.setdefault("lonlat", []).append(lonlat_path)
         result.artifacts.append(
@@ -139,3 +150,11 @@ class MapProcessingService:
         if not main_map_paths or not result.legend:
             return
         image_ops.estimate_legend_area_fractions(main_map_paths[0], result.legend)
+
+
+def _cache_key(image_path: Path, identity: str | None) -> str:
+    if identity is not None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", identity):
+            raise ValueError("cache_identity must contain only letters, digits, '_' or '-'.")
+        return identity
+    return hashlib.sha256(str(image_path.resolve()).encode("utf-8")).hexdigest()

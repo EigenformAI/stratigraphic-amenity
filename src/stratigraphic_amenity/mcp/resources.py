@@ -141,7 +141,14 @@ class ResourceRegistry:
             raise McpToolError("unsupported_media", f"Unsupported map media type: {mime_type}")
         size = source.stat().st_size
         if size > self.max_source_bytes:
-            raise McpToolError("oversize_image", "Source image exceeds the configured byte limit.")
+            raise McpToolError(
+                "oversize_image",
+                "Source image exceeds the configured byte limit.",
+                details={"observed_bytes": size, "limit_bytes": self.max_source_bytes},
+                recovery_hints=[
+                    "Use a smaller source image or ask the server operator to increase max_source_bytes."
+                ],
+            )
         source_key = str(source)
         for map_id, entry in self._data["maps"].items():
             if entry.get("source_path") == source_key:
@@ -153,6 +160,7 @@ class ResourceRegistry:
             "created_at": _utc_now(),
             "processing": None,
             "georef": None,
+            "georefs": [],
             "bundles": [],
         }
         self._data["maps"][map_id] = entry
@@ -171,11 +179,21 @@ class ResourceRegistry:
         mime_type: str | None = None,
     ) -> dict[str, Any]:
         artifact_path = self._validate_existing_file(
-            path, error_code="disallowed_path", path_origin="generated_artifact"
+            path,
+            error_code="disallowed_path",
+            path_origin="generated_artifact",
+            allow_cache_root=True,
         )
         canonical = str(artifact_path)
         for artifact_id, entry in self._data["artifacts"].items():
             if entry.get("path") == canonical:
+                if entry.get("map_id") != map_id:
+                    raise McpToolError(
+                        "internal_error",
+                        "An artifact path is already owned by a different map.",
+                        details={"existing_owner": bool(entry.get("map_id")), "new_owner": bool(map_id)},
+                        recovery_hints=["Report this cache identity collision to the server operator."],
+                    )
                 self._merge_artifact_metadata(entry, role, stage, map_id, bbox, label)
                 self._save()
                 return self._public_artifact(artifact_id, entry)
@@ -227,7 +245,10 @@ class ResourceRegistry:
         role: str = "knowledge_overlay",
     ) -> dict[str, Any]:
         overlay_path = self._validate_existing_file(
-            path, error_code="disallowed_path", path_origin="generated_artifact"
+            path,
+            error_code="disallowed_path",
+            path_origin="generated_artifact",
+            allow_cache_root=True,
         )
         overlay_id = uuid.uuid4().hex
         mime_type = mime_type_for_path(overlay_path)
@@ -253,17 +274,33 @@ class ResourceRegistry:
         return dict(processing) if isinstance(processing, Mapping) else None
 
     def set_map_georef(self, map_id: str, georef: Mapping[str, Any]) -> dict[str, Any]:
-        self._require_map(map_id)
-        path = self.cache_root / "mcp" / "v1" / "maps" / map_id / "georef.json"
-        write_json_atomic(path, georef)
-        entry = {
-            "path": str(path.resolve()),
-            "uri": f"geomap://maps/{map_id}/georef.json",
-            "mime_type": "application/json",
-            "created_at": _utc_now(),
-        }
-        self._data["maps"][map_id]["georef"] = entry
-        self._save()
+        with _registry_file_lock(self.registry_path):
+            self._data = _merge_registry_data(self._load(), self._data)
+            map_entry = self._require_map(map_id)
+            revisions = map_entry.setdefault("georefs", [])
+            revision = max((_georef_revision(entry) for entry in revisions), default=0) + 1
+            path = (
+                self.cache_root
+                / "mcp"
+                / "v1"
+                / "maps"
+                / map_id
+                / "georef"
+                / f"{revision}.json"
+            )
+            write_json_atomic(path, georef)
+            entry = {
+                "path": str(path.resolve()),
+                "uri": f"geomap://maps/{map_id}/georef/{revision}.json",
+                "mime_type": "application/json",
+                "map_id": map_id,
+                "role": "georeference",
+                "revision": revision,
+                "created_at": _utc_now(),
+            }
+            revisions.append(entry)
+            map_entry["georef"] = entry
+            write_json_atomic(self.registry_path, self._data)
         return {"uri": entry["uri"], "mime_type": entry["mime_type"], "source_path_redacted": True}
 
     def get_map_georef(self, map_id: str) -> dict[str, Any] | None:
@@ -296,16 +333,26 @@ class ResourceRegistry:
         return dict(entry)
 
     def read_resource(self, uri: str) -> dict[str, Any]:
-        _, entry = self._entry_for_uri(uri)
+        kind, entry = self._entry_for_uri(uri)
         path = Path(str(entry["path"]))
         if not path.exists():
             raise McpToolError("artifact_not_found", "Resource backing file is missing.")
         resolved = path.resolve()
-        if not self._inside_allowed_root(resolved):
+        if not self._inside_allowed_root(resolved) and not (
+            kind != "source" and _is_relative_to(resolved, self.cache_root)
+        ):
             raise McpToolError("disallowed_path", "Resource backing file is outside allowed roots.")
         size = resolved.stat().st_size
         if size > self.max_resource_read_bytes:
-            raise McpToolError("oversize_image", "Resource exceeds the configured read byte limit.")
+            raise McpToolError(
+                "oversize_image",
+                "Resource exceeds the configured read byte limit.",
+                details={"observed_bytes": size, "limit_bytes": self.max_resource_read_bytes},
+                recovery_hints=[
+                    "Read a smaller derived artifact or ask the server operator to increase "
+                    "max_resource_read_bytes."
+                ],
+            )
         mime_type = str(entry.get("mime_type") or mime_type_for_path(resolved))
         content: dict[str, Any] = {"uri": uri, "mimeType": mime_type, "size": size}
         if mime_type in TEXT_MIME_TYPES or mime_type.startswith("text/"):
@@ -313,6 +360,132 @@ class ResourceRegistry:
         else:
             content["blob"] = base64.b64encode(resolved.read_bytes()).decode("ascii")
         return content
+
+    def list_resources(self) -> list[dict[str, Any]]:
+        """List readable concrete resources without exposing registry paths."""
+
+        resources: list[dict[str, Any]] = []
+        for map_id, entry in sorted(self._data["maps"].items()):
+            source = Path(str(entry["source_path"]))
+            resources.append(
+                {
+                    "uri": f"geomap://maps/{map_id}",
+                    "name": f"map {map_id}",
+                    "description": "Redacted map registration metadata.",
+                    "mimeType": "application/json",
+                }
+            )
+            if source.exists() and self._inside_allowed_root(source.resolve()):
+                size = source.stat().st_size
+                resources.append(
+                    self._mark_unreadable(
+                        {
+                            "uri": f"geomap://maps/{map_id}/source",
+                            "name": f"map {map_id} source",
+                            "description": f"Registered source map image. map_id={map_id}; role=source.",
+                            "mimeType": entry.get("source_mime_type", mime_type_for_path(source)),
+                            "size": size,
+                        }
+                    )
+                )
+            georef = entry.get("georef")
+            if isinstance(georef, Mapping):
+                descriptor = self._stored_resource_descriptor(
+                    {
+                        **{key: value for key, value in georef.items() if key != "revision"},
+                        "uri": f"geomap://maps/{map_id}/georef.json",
+                    },
+                    name=f"map {map_id} current georeference",
+                    description="Current georeference JSON alias.",
+                )
+                if descriptor:
+                    resources.append(descriptor)
+            for georef_revision in entry.get("georefs", []):
+                descriptor = self._stored_resource_descriptor(
+                    georef_revision,
+                    name=f"map {map_id} georeference revision {georef_revision.get('revision')}",
+                    description="Immutable georeference JSON revision.",
+                )
+                if descriptor:
+                    resources.append(descriptor)
+        for collection, description in (
+            ("artifacts", "Generated map-processing artifact."),
+            ("bundles", "Knowledge result bundle."),
+            ("overlays", "Rendered knowledge overlay."),
+        ):
+            for resource_id, entry in sorted(self._data[collection].items()):
+                role = str(entry.get("role") or collection[:-1])
+                label = f": {entry['label']}" if entry.get("label") else ""
+                descriptor = self._stored_resource_descriptor(
+                    entry,
+                    name=f"{collection[:-1]} {resource_id} ({role}{label})",
+                    description=description,
+                )
+                if descriptor:
+                    resources.append(descriptor)
+        return resources
+
+    @staticmethod
+    def list_resource_templates() -> list[dict[str, str]]:
+        return [
+            {"uriTemplate": "geomap://maps/{map_id}", "name": "map metadata"},
+            {"uriTemplate": "geomap://maps/{map_id}/source", "name": "map source"},
+            {
+                "uriTemplate": "geomap://maps/{map_id}/georef.json",
+                "name": "current map georeference",
+            },
+            {
+                "uriTemplate": "geomap://maps/{map_id}/georef/{revision}.json",
+                "name": "immutable map georeference revision",
+            },
+            {
+                "uriTemplate": "geomap://artifacts/{artifact_id}{extension}",
+                "name": "map artifact",
+            },
+            {"uriTemplate": "geomap://bundles/{bundle_id}.json", "name": "knowledge bundle"},
+            {
+                "uriTemplate": "geomap://overlays/{overlay_id}{extension}",
+                "name": "knowledge overlay",
+            },
+        ]
+
+    def _stored_resource_descriptor(
+        self, entry: Mapping[str, Any], *, name: str, description: str
+    ) -> dict[str, Any] | None:
+        path = Path(str(entry["path"]))
+        if not path.exists():
+            return None
+        resolved = path.resolve()
+        if not self._inside_allowed_root(resolved) and not _is_relative_to(
+            resolved, self.cache_root
+        ):
+            return None
+        metadata = []
+        for key in ("map_id", "role", "stage", "label", "revision"):
+            if entry.get(key) is not None:
+                metadata.append(f"{key}={entry[key]}")
+        if entry.get("bbox") is not None:
+            metadata.append(f"bbox={list(entry['bbox'])}")
+        if metadata:
+            description = f"{description} {'; '.join(metadata)}."
+        return self._mark_unreadable({
+            "uri": str(entry["uri"]),
+            "name": name,
+            "description": description,
+            "mimeType": str(entry.get("mime_type") or mime_type_for_path(resolved)),
+            "size": resolved.stat().st_size,
+        })
+
+    def _mark_unreadable(self, descriptor: dict[str, Any]) -> dict[str, Any]:
+        size = int(descriptor.get("size", 0))
+        if size <= self.max_resource_read_bytes:
+            return descriptor
+        descriptor["name"] = f"UNREADABLE {descriptor['name']}"
+        descriptor["description"] = (
+            f"UNREADABLE: exceeds max_resource_read_bytes; observed_bytes={size}; "
+            f"limit_bytes={self.max_resource_read_bytes}. {descriptor['description']}"
+        )
+        return descriptor
 
     def _load(self) -> dict[str, Any]:
         if not self.registry_path.exists():
@@ -333,6 +506,8 @@ class ResourceRegistry:
         data.setdefault("artifacts", {})
         data.setdefault("bundles", {})
         data.setdefault("overlays", {})
+        for entry in data["maps"].values():
+            entry.setdefault("georefs", [])
         return data
 
     def _save(self) -> None:
@@ -366,7 +541,12 @@ class ResourceRegistry:
                 self._write()
 
     def _validate_existing_file(
-        self, path: str | Path, *, error_code: str, path_origin: str
+        self,
+        path: str | Path,
+        *,
+        error_code: str,
+        path_origin: str,
+        allow_cache_root: bool = False,
     ) -> Path:
         source = Path(path).expanduser()
         try:
@@ -375,7 +555,9 @@ class ResourceRegistry:
             raise McpToolError("artifact_not_found", f"File does not exist: {source.name}") from exc
         if not resolved.is_file():
             raise McpToolError(error_code, "Path is not a regular file.")
-        if not self._inside_allowed_root(resolved):
+        if not self._inside_allowed_root(resolved) and not (
+            allow_cache_root and _is_relative_to(resolved, self.cache_root)
+        ):
             raise McpToolError(
                 error_code,
                 "Path is outside configured MCP allowed roots.",
@@ -409,6 +591,10 @@ class ResourceRegistry:
                 }
             if tail == "georef.json" and isinstance(entry.get("georef"), Mapping):
                 return "georef", entry["georef"]
+            if tail.startswith("georef/"):
+                for georef in entry.get("georefs", []):
+                    if georef.get("uri") == uri:
+                        return "georef", georef
             if tail == "":
                 payload = self._public_map(map_id, entry)
                 path = self.cache_root / "mcp" / "v1" / "maps" / map_id / "map.json"
@@ -470,11 +656,11 @@ class ResourceRegistry:
         bbox: list[int] | tuple[int, int, int, int] | None,
         label: str | None,
     ) -> None:
-        entry["role"] = entry.get("role") or str(role)
-        entry["stage"] = entry.get("stage") or str(stage)
-        entry["map_id"] = entry.get("map_id") or map_id
-        entry["bbox"] = entry.get("bbox") or (list(bbox) if bbox is not None else None)
-        entry["label"] = entry.get("label") or label
+        entry["role"] = str(role)
+        entry["stage"] = str(stage)
+        entry["map_id"] = map_id
+        entry["bbox"] = list(bbox) if bbox is not None else None
+        entry["label"] = label
 
 
 def _empty_registry() -> dict[str, Any]:
@@ -529,7 +715,18 @@ def _merge_map_entry(existing: Mapping[str, Any], current: Mapping[str, Any]) ->
         if bundle_id not in bundles:
             bundles.append(bundle_id)
     merged["bundles"] = bundles
+    georefs = {}
+    for georef in [*existing.get("georefs", []), *current.get("georefs", [])]:
+        georefs[str(georef["uri"])] = georef
+    merged["georefs"] = list(georefs.values())
     return merged
+
+
+def _georef_revision(entry: Mapping[str, Any]) -> int:
+    try:
+        return int(entry.get("revision", 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _resource_suffix(path: Path, mime_type: str) -> str:

@@ -164,7 +164,7 @@ def _download_file(asset: dict[str, Any], destination: Path) -> None:
         try:
             result = gdown.download(url=url, output=str(destination), quiet=False, fuzzy=True)
         except Exception as exc:
-            raise AssetInstallError(f"Download failed for asset {asset['id']}.") from exc
+            raise AssetInstallError(f"Download failed for asset {asset['id']}: {exc}") from exc
         if not result:
             raise AssetInstallError(f"Download failed for asset {asset['id']}.")
         return

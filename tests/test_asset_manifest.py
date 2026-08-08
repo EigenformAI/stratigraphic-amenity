@@ -266,7 +266,7 @@ def test_gdown_failure_and_oversize_are_reported_as_asset_errors(tmp_path, monke
         raise RuntimeError("network detail")
 
     monkeypatch.setitem(sys.modules, "gdown", SimpleNamespace(download=fail_download))
-    with pytest.raises(AssetInstallError, match="Download failed"):
+    with pytest.raises(AssetInstallError, match="Download failed.*network detail"):
         install_asset(asset, root=tmp_path / "failed")
 
     def oversized_download(*, output, **_kwargs):

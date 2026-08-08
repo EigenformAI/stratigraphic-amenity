@@ -24,17 +24,17 @@ class MapProcessingCache:
     def __init__(self, config: MapProcessingConfig):
         self.config = config
 
-    def det_dir(self, map_name: str) -> Path:
-        return self.config.cache_namespace_root / "det" / map_name
+    def map_dir(self, cache_key: str) -> Path:
+        return self.config.cache_namespace_root / "maps" / cache_key
 
-    def component_path(self, map_name: str, label: str, index: int) -> Path:
-        return self.det_dir(map_name) / f"{label}_{index}.png"
+    def component_path(self, cache_key: str, label: str, index: int) -> Path:
+        return self.map_dir(cache_key) / "components" / f"{label}_{index}.png"
 
-    def visualization_path(self, map_name: str) -> Path:
-        return self.config.cache_namespace_root / "vis" / f"{map_name}_detections.png"
+    def visualization_path(self, cache_key: str) -> Path:
+        return self.map_dir(cache_key) / "detections.png"
 
-    def metadata_path(self, map_name: str) -> Path:
-        return self.config.cache_namespace_root / "meta" / f"{map_name}.json"
+    def metadata_path(self, cache_key: str) -> Path:
+        return self.map_dir(cache_key) / "metadata.json"
 
-    def save_result(self, result: MapProcessingResult) -> None:
-        write_json_atomic(self.metadata_path(result.name), result.to_peace_metadata())
+    def save_result(self, result: MapProcessingResult, cache_key: str) -> None:
+        write_json_atomic(self.metadata_path(cache_key), result.to_peace_metadata())

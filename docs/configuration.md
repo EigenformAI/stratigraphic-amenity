@@ -16,7 +16,7 @@ product.
 | `XDG_CACHE_HOME` | `~/.cache` | shared paths | no | Base for default cache root. |
 | `GEOMAP_DATA_ROOT` | `<XDG data>/stratigraphic-amenity` | all services | no | User maps and default asset/source roots. |
 | `GEOMAP_CACHE_ROOT` | `<XDG cache>/stratigraphic-amenity` | all services/MCP | sensitive path | Derived artifacts, provider cache, registry, bundles, and overlays. |
-| `GEOMAP_MCP_ALLOWED_ROOTS` | data root plus cache root | MCP | sensitive path | OS-path-separator list of roots MCP may register/read. |
+| `GEOMAP_MCP_ALLOWED_ROOTS` | data root plus cache root | MCP | sensitive path | OS-path-separator list of roots from which MCP may register source maps. Registry-owned generated resources under the cache root remain readable. |
 | `GEOMAP_MCP_ENABLE_DETECTOR_PREPARATION` | `true` | MCP | no | Expose the detector asset download/install tool. Set to `false` to withhold it; any unrecognized value also withholds it. |
 | `GEOMAP_MCP_ENABLE_KNOWLEDGE_PREPARATION` | `true` | MCP | no | Expose the knowledge asset download/install tool. Set to `false` to withhold it; any unrecognized value also withholds it. |
 | `GEOMAP_LOG_LEVEL` | `INFO` | MCP | no | Stderr threshold: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
@@ -27,7 +27,9 @@ product.
 | `GEOMAP_KNOWLEDGE_SOURCES_ROOT` | `<data-root>/knowledge/sources` | knowledge/sync | sensitive path | Versioned normalized source mirrors and manifests. |
 
 `GEOMAP_MCP_ALLOWED_ROOTS` uses `os.pathsep`: `:` on POSIX and `;` on Windows. Empty/unset falls
-back to the resolved data and cache roots. Allowed roots are not a sandbox; restrict process OS
+back to the resolved data and cache roots. Explicit roots continue to restrict source registration;
+they do not lock the server out of generated resources it registered under its own cache root.
+Allowed roots are not a sandbox; restrict process OS
 permissions independently. The server does not expose their paths, only labels such as
 `root_1`.
 
@@ -113,7 +115,7 @@ first use.
 | Knowledge service | `<cache-root>/knowledge/v2/providers/...` when `write_cache=True`. |
 | MCP registry | `<cache-root>/mcp/v1/registry.json` and lock file. |
 | MCP map snapshot | `<cache-root>/mcp/v1/maps/<map-id>/map.json`, refreshed when the bare map URI is read. |
-| MCP georeference | `<cache-root>/mcp/v1/maps/<map-id>/georef.json`. |
+| MCP georeference | Immutable revisions under `<cache-root>/mcp/v1/maps/<map-id>/georef/<revision>.json`. |
 | MCP knowledge | `<cache-root>/mcp/v1/bundles/<bundle-id>.json`. |
 | MCP overlay | `<cache-root>/mcp/v1/overlays/<id>.svg` and optional PNG. |
 | Source sync | `<knowledge-sources-root>/<source-id>/<version>/...`. |

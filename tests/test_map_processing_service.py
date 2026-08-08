@@ -47,7 +47,7 @@ def test_service_processes_image_and_writes_peace_metadata(tmp_path):
         legend_detector=FakeLegendDetector(),
     )
 
-    result = service.process_image(image_path)
+    result = service.process_image(image_path, cache_identity="a" * 32)
     peace = result.to_peace_metadata()
 
     assert peace["name"] == "sample"
@@ -58,9 +58,10 @@ def test_service_processes_image_and_writes_peace_metadata(tmp_path):
     assert peace["legend"][0]["area"] > 0
     assert result.legend[0].area_fraction > 0
 
-    metadata_path = config.cache_namespace_root / "meta" / "sample.json"
-    crop_path = config.cache_namespace_root / "det" / "sample" / "main_map_0.png"
-    overlay_path = config.cache_namespace_root / "vis" / "sample_detections.png"
+    map_cache = config.cache_namespace_root / "maps" / ("a" * 32)
+    metadata_path = map_cache / "metadata.json"
+    crop_path = map_cache / "components" / "main_map_0.png"
+    overlay_path = map_cache / "detections.png"
     assert metadata_path.exists()
     assert crop_path.exists()
     assert overlay_path.exists()
@@ -80,4 +81,34 @@ def test_service_processes_image_and_writes_peace_metadata(tmp_path):
     assert any(
         artifact.role == "detection_overlay" and Path(artifact.path) == overlay_path
         for artifact in result.artifacts
+    )
+
+
+def test_same_named_images_use_disjoint_cache_artifacts(tmp_path):
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first_image = first_dir / "image.png"
+    second_image = second_dir / "image.png"
+    assert cv2.imwrite(str(first_image), np.full((100, 130, 3), 255, dtype=np.uint8))
+    assert cv2.imwrite(str(second_image), np.zeros((100, 130, 3), dtype=np.uint8))
+    config = MapProcessingConfig(
+        data_root=tmp_path / "data",
+        model_root=tmp_path / "models",
+        cache_root=tmp_path / "cache",
+        dataset_source="usgs",
+    )
+    service = MapProcessingService(
+        config=config,
+        component_detector=FakeComponentDetector(),
+        legend_detector=FakeLegendDetector(),
+    )
+
+    first = service.process_image(first_image, cache_identity="1" * 32)
+    second = service.process_image(second_image, cache_identity="2" * 32)
+
+    assert first.name == second.name == "image"
+    assert {Path(item.path) for item in first.artifacts}.isdisjoint(
+        {Path(item.path) for item in second.artifacts}
     )
