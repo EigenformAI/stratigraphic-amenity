@@ -48,6 +48,7 @@ stratigraphic_amenity/map_processing/detectors/peace_yolov10.py
 stratigraphic_amenity/map_processing/detectors/preflight.py
 stratigraphic_amenity/mcp/__init__.py
 stratigraphic_amenity/mcp/adapter.py
+stratigraphic_amenity/mcp/digest.py
 stratigraphic_amenity/mcp/errors.py
 stratigraphic_amenity/mcp/images.py
 stratigraphic_amenity/mcp/resources.py

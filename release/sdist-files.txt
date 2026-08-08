@@ -76,6 +76,7 @@ src/stratigraphic_amenity/map_processing/detectors/peace_yolov10.py
 src/stratigraphic_amenity/map_processing/detectors/preflight.py
 src/stratigraphic_amenity/mcp/__init__.py
 src/stratigraphic_amenity/mcp/adapter.py
+src/stratigraphic_amenity/mcp/digest.py
 src/stratigraphic_amenity/mcp/errors.py
 src/stratigraphic_amenity/mcp/images.py
 src/stratigraphic_amenity/mcp/resources.py
@@ -111,6 +112,7 @@ tests/test_map_processing_legend.py
 tests/test_map_processing_service.py
 tests/test_map_processing_types.py
 tests/test_mcp_capabilities.py
+tests/test_mcp_digest.py
 tests/test_mcp_resources.py
 tests/test_mcp_schemas.py
 tests/test_mcp_server.py
