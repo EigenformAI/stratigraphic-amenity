@@ -77,8 +77,8 @@ stratigraphic-amenity-mcp = "stratigraphic_amenity.mcp.server:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3,<9",
-    "ruff>=0.8,<1",
+    "pytest>=9.1.1,<10",
+    "ruff>=0.16.1,<1",
 ]
 
 [tool.hatch.build.targets.wheel]
