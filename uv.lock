@@ -278,7 +278,7 @@ wheels = [
 
 [[package]]
 name = "earthengine-api"
-version = "1.7.32"
+version = "1.7.38"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -288,9 +288,9 @@ dependencies = [
     { name = "httplib2" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/4d/b914870ac335a054e047bdc3bcd7fb7170d2ba6a094ac370eb6a4a326537/earthengine_api-1.7.32.tar.gz", hash = "sha256:6390058804930ec54d5c41aa3321499718059dd9bd65e137dd2d9a2195b1fd7c", size = 432958, upload-time = "2026-06-22T21:27:27.263Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/ee/ca4a222fe45fe727de1b6a1382c1e26fc47964a4ac52fc232bddb5c45757/earthengine_api-1.7.38.tar.gz", hash = "sha256:25ea5f6c02b453d41d7fd1129d087f17c26fc1e7b106b239e545828f619819ce", size = 433298, upload-time = "2026-08-03T23:36:08.042Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/c3/ecf5b460a11ee1390be7c758419ce1207b09ee3769eb256ca7de00d0c843/earthengine_api-1.7.32-py3-none-any.whl", hash = "sha256:bd0582ddb6e4cab1ada844b816014924ad0b694b35d6dc4b9e5d623726978b6c", size = 480375, upload-time = "2026-06-22T21:27:25.63Z" },
+    { url = "https://files.pythonhosted.org/packages/db/e7/1d00b1b78edeee980a0cff832ad8e09764873ae84912887023fe0d93577a/earthengine_api-1.7.38-py3-none-any.whl", hash = "sha256:881d4ec65b01374fb503a5617e7b11c68cddc64f79c8f9b41788be8d1c9034fa", size = 480682, upload-time = "2026-08-03T23:36:06.431Z" },
 ]
 
 [[package]]
@@ -1625,7 +1625,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "earthengine-api", marker = "extra == 'knowledge-earthengine'", specifier = ">=1,<2" },
+    { name = "earthengine-api", marker = "extra == 'knowledge-earthengine'", specifier = ">=1.7.38,<2" },
     { name = "gdown", marker = "extra == 'assets'", specifier = ">=5,<6" },
     { name = "httpx", marker = "extra == 'knowledge-network'", specifier = ">=0.27,<1" },
     { name = "huggingface-hub", marker = "extra == 'detectors'", specifier = ">=0.24,<1" },
