@@ -45,7 +45,7 @@ detectors = [
     "tqdm==4.66.5",
 ]
 knowledge-earthengine = [
-    "earthengine-api>=1,<2",
+    "earthengine-api>=1.7.38,<2",
 ]
 knowledge-local = [
     "pandas==2.2.2",
