@@ -1649,7 +1649,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'detectors'", specifier = "==2.0.1", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "stratigraphic-amenity", extra = "detectors" } },
     { name = "torch", marker = "extra == 'knowledge-semantic'", specifier = ">=2.2,<3" },
     { name = "torchvision", marker = "extra == 'detectors'", specifier = "==0.15.2", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "stratigraphic-amenity", extra = "detectors" } },
-    { name = "tqdm", marker = "extra == 'detectors'", specifier = "==4.66.5" },
+    { name = "tqdm", marker = "extra == 'detectors'", specifier = "==4.70.0" },
 ]
 provides-extras = ["assets", "detectors", "knowledge-earthengine", "knowledge-local", "knowledge-network", "knowledge-semantic", "geo", "mcp"]
 
@@ -1814,14 +1814,14 @@ wheels = [
 
 [[package]]
 name = "tqdm"
-version = "4.66.5"
+version = "4.70.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-21-stratigraphic-amenity-detectors' and extra == 'extra-21-stratigraphic-amenity-knowledge-semantic')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/58/83/6ba9844a41128c62e810fddddd72473201f3eacde02046066142a2d96cc5/tqdm-4.66.5.tar.gz", hash = "sha256:e1020aef2e5096702d8a025ac7d16b1577279c9d63f8375b63083e9a5f0fcbad", size = 169504, upload-time = "2024-08-03T22:35:40.339Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/3b/6c24bec5be5e743ffd99576daa5cc077722fc7d5bbc00bd133fa0c698dc6/tqdm-4.70.0.tar.gz", hash = "sha256:55b0b0dbd97462d06ebee91e4dac24ed4d4702be82b24f07e6c1d27e08cea220", size = 795438, upload-time = "2026-07-27T11:33:15.271Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/5d/acf5905c36149bbaec41ccf7f2b68814647347b72075ac0b1fe3022fdc73/tqdm-4.66.5-py3-none-any.whl", hash = "sha256:90279a3770753eafc9194a0364852159802111925aa30eb3f9d85b0e805ac7cd", size = 78351, upload-time = "2024-08-03T22:35:36.644Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/1c/01bfd571a64e7f270e6bab5e33777debe0edc56759233ce84f27dec92d14/tqdm-4.70.0-py3-none-any.whl", hash = "sha256:7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953", size = 80184, upload-time = "2026-07-27T11:33:13.167Z" },
 ]
 
 [[package]]
