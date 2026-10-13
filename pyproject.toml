@@ -30,7 +30,7 @@ assets = [
     "gdown>=5,<6",
 ]
 detectors = [
-    "huggingface-hub>=0.24,<1",
+    "huggingface-hub>=1.25.1,<2",
     "matplotlib==3.9.2",
     "numpy==1.26.4",
     "opencv-python-headless==4.10.0.84",
